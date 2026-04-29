@@ -129,37 +129,29 @@ def get_db():
 
 @app.post("/termine/", response_model=TerminResponse)
 def create_termin(termin: TerminCreate, db: Session = Depends(get_db)):
-    # NEU: Wir prüfen jetzt, ob der TITEL schon in der Datenbank steht!
-
-    db_termin = db.query(TerminDB).filter(TerminDB.titel == termin.titel).first()
+    # NEU: Prüfung auf gleiche Straße/Ort UND identischen Zeitraum
+    db_termin = db.query(TerminDB).filter(
+        TerminDB.ort == termin.ort,
+        TerminDB.startdatum == termin.startdatum,
+        TerminDB.enddatum == termin.enddatum
+    ).first()
 
     if db_termin:
-        raise HTTPException(status_code=400, detail="Baumaßnahme (Titel) existiert bereits")
+        raise HTTPException(status_code=400, detail=f"Baumaßnahme in '{termin.ort}' für diesen Zeitraum existiert bereits")
 
     neuer_termin = TerminDB(
-
         titel=termin.titel,
-
         ort=termin.ort,
-
         genaue_lage=termin.genaue_lage,
-
         art_der_massnahme=termin.art_der_massnahme,
-
         startdatum=termin.startdatum,
-
         enddatum=termin.enddatum,
-
         ausfuehrende_stelle=termin.ausfuehrende_stelle,
-
         link=termin.link
-
     )
 
     db.add(neuer_termin)
-
     db.commit()
-
     db.refresh(neuer_termin)
 
     return neuer_termin
