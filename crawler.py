@@ -16,6 +16,9 @@ import json
 
 import google.generativeai as genai
 
+import sys
+
+
 # ==========================================
 
 # EINSTELLUNGEN
@@ -24,7 +27,7 @@ import google.generativeai as genai
 
 API_URL = "http://127.0.0.1:8000/termine/"
 
-START_URL = "https://www.buxtehude.de"  # <-- HIER START-URL EINTRAGEN
+START_URL = "https://barssel.de"  # <-- HIER START-URL EINTRAGEN
 
 
 # Sucht aktiv nach der .env Datei im Projektverzeichnis und lädt sie
@@ -108,7 +111,7 @@ def extrahiere_baumassnahmen_mit_ki(sichtbarer_text, aktuelle_url):
     {sichtbarer_text}
     """
 
-    print("🧠 Sende Text an Gemini Flash zur Analyse...")
+    print("Sende Text an Gemini Flash zur Analyse...")
 
     try:
         model = genai.GenerativeModel(
@@ -168,11 +171,11 @@ def send_to_api(massnahme):
 
         if response.status_code == 200:
 
-            print(f"✅ GESPEICHERT: {massnahme.get('titel')} in {massnahme.get('ort')}")
+            print(f"GESPEICHERT: {massnahme.get('titel')} in {massnahme.get('ort')}")
 
         elif response.status_code == 400:
 
-            print(f"⏭️ ÜBERSPRUNGEN (existiert schon): {massnahme.get('titel')}")
+            print(f"⏭ÜBERSPRUNGEN (existiert schon): {massnahme.get('titel')}")
 
         else:
 
@@ -200,7 +203,7 @@ def run_crawler(start_url, max_seiten=10):
 
     seiten_besucht_count = 0
 
-    print(f"🚀 Starte Crawler auf: {start_url}")
+    print(f"Starte Crawler auf: {start_url}")
 
     while warteschlange and seiten_besucht_count < max_seiten:
 
@@ -213,7 +216,7 @@ def run_crawler(start_url, max_seiten=10):
 
         print(f"\n--- Seite {seiten_besucht_count + 1}/{max_seiten} ---")
 
-        print(f"🕸️ Besuche: {aktuelle_url} (Relevanz-Score: {-score_negativ})")
+        print(f"Besuche: {aktuelle_url} (Relevanz-Score: {-score_negativ})")
 
         besuchte_seiten.add(aktuelle_url)
 
@@ -268,17 +271,29 @@ def run_crawler(start_url, max_seiten=10):
 
         except Exception as e:
 
-            print(f"⚠️ Fehler beim Laden von {aktuelle_url}: {e}")
+            print(f"Fehler beim Laden von {aktuelle_url}: {e}")
 
         # Pause, um die Server der Kommunen nicht zu überlasten
 
         time.sleep(2)
 
-    print("\n🏁 Crawler-Durchlauf beendet.")
+    print("\nCrawler-Durchlauf beendet.")
 
 
 if __name__ == "__main__":
-    # Wir testen erstmal mit 5 Seiten. Später kannst du das auf 50 oder 100 hochstellen.
+    ziel_url = START_URL
+    limit = 5  # Standard-Limit
 
-    run_crawler(START_URL, max_seiten=5)
+    if len(sys.argv) > 1:
+        ziel_url = sys.argv[1]
+        print(f"Start-URL aus Argument übernommen: {ziel_url}")
+
+    if len(sys.argv) > 2:
+        try:
+            limit = int(sys.argv[2])
+            print(f"Seitenlimit aus Argument übernommen: {limit}")
+        except ValueError:
+            print("Ungültiges Limit angegeben, nutze Standardwert (5).")
+
+    run_crawler(ziel_url, max_seiten=limit)
 
