@@ -27,8 +27,9 @@ import sys
 
 API_URL = "http://127.0.0.1:8000/termine/"
 
-START_URL = "https://barssel.de"  # <-- HIER START-URL EINTRAGEN
+START_URL = "https://www.stadt-sulzbach.de"  # <-- HIER START-URL EINTRAGEN
 
+#TODO:Einträge gebündelt schhicken um Redundanz ... ein Call
 
 # Sucht aktiv nach der .env Datei im Projektverzeichnis und lädt sie
 dotenv_path = find_dotenv()

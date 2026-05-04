@@ -13,6 +13,11 @@ KEYWORDS = {
     "tiefbau": r"tiefbau|straßenbau|kanalsanierung|brückenbau"
 }
 
+# Erweiterung der Keywords um Portale
+DISCOVERY_DOMAINS = [
+    "bauleitplanung", "geoportal", "uvp-verbund",
+    "region-frankfurt-rhein-main", "landesplanung"
+]
 
 class SmartCrawler:
     def __init__(self, base_url, db_pool):
@@ -31,6 +36,25 @@ class SmartCrawler:
             if re.search(pattern, combined):
                 return topic
         return None
+
+    async def extract_and_queue_links(self, tree, current_url, depth):
+        for link in tree.css("a"):
+            href = link.attributes.get("href")
+            if not href: continue
+
+            full_url = urljoin(current_url, href)
+            target_domain = urlparse(full_url).netloc
+
+            # Fall A: Interne Seite (Deep Crawl)
+            if target_domain == self.domain:
+                await self.queue.put((full_url, depth + 1))
+
+            # Fall B: Discovery (Externe relevante Portale)
+            elif any(d in target_domain for d in DISCOVERY_DOMAINS):
+                if not await self.db.is_blacklisted(full_url):
+                    print(f"[+] Discovery: Neues Portal gefunden -> {full_url}")
+                    await self.db.add_discovery_target(full_url, source=current_url)
+
 
     async def crawl(self, current_url, depth=0, max_depth=3):
         if depth > max_depth or current_url in self.visited_urls:
