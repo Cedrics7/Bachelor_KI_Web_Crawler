@@ -1,300 +1,249 @@
 import os
-
-from dotenv import load_dotenv, find_dotenv
-
-import requests
-
-from bs4 import BeautifulSoup
-
-from urllib.parse import urljoin
-
-import heapq
-
-import time
-
 import json
-
+import time
+import requests
+from bs4 import BeautifulSoup
+import psycopg2
+from datetime import datetime, date
+from dotenv import load_dotenv
 import google.generativeai as genai
-
-import sys
-
-
-# ==========================================
-
-# EINSTELLUNGEN
-
-# ==========================================
-
-API_URL = "http://127.0.0.1:8000/termine/"
-
-START_URL = "https://www.stadt-sulzbach.de"  # <-- HIER START-URL EINTRAGEN
-
-#TODO:Einträge gebündelt schhicken um Redundanz ... ein Call
-
-# Sucht aktiv nach der .env Datei im Projektverzeichnis und lädt sie
-dotenv_path = find_dotenv()
-load_dotenv(dotenv_path)
-
-# Holt den Key aus der Systemumgebung
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if not GEMINI_API_KEY:
-    print("❌ FEHLER: Kein API_KEY in der .env Datei gefunden!")
-    exit()
-
-genai.configure(api_key=GEMINI_API_KEY)
+from urllib.parse import urljoin, urlparse
 
 
-# ==========================================
-# 1. DAS NAVIGATIONS-GEHIRN (Heuristik)
-# ==========================================
-def bewerte_link(link_text, link_url):
-    """Bewertet, wie relevant ein Link für Tiefbau/Telekommunikation ist."""
-    score = 0
-    link_text = str(link_text).lower()
-    link_url = str(link_url).lower()
+# =====================================================================
+# --- 1. CRAWLER KONFIGURATION (Anpassbare Parameter) ---
+# =====================================================================
+CONFIG = {
+    "max_targets": 2,  # Wie viele Behörden/Städte pro Durchlauf gecrawlt werden sollen (Hauptseiten)
+    "max_subpages": 5,  # Wie viele Unterseiten pro Behörde maximal gesammelt werden (inkl. Startseite)
+    "timeout_seconds": 10,  # Wie lange auf die Antwort einer Webseite gewartet wird
+    "sleep_between_targets": 2,  # Pause in Sekunden zwischen zwei Behörden (schont Server und API)
+    "min_end_datum": str(date.today()),
+    "ziel_kategorien": {
+        "Sanierung": ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
+        "Neubau": ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
+        "Privatisierung": ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
+        "Tiefbau": ["Tiefbau", "Straßenbau", "Kanalsanierung", "Brückenbau"]
+    }
+}
+# =====================================================================
 
-    # NEU: "sanierungsgebiet", "ausbaugebiet", "stadtsanierung" hinzugefügt
-    top_woerter = ["baumaßnahmen", "baustellen", "straßenbau", "tiefbau", "sperrung", "ausbau", "infrastruktur",
-                   "erschließung", "verkehr", "bauarbeiten", "sanierungsgebiet", "ausbaugebiet", "stadtsanierung"]
-    for wort in top_woerter:
-        if wort in link_text or wort in link_url:
-            score += 50
+load_dotenv()
 
-    # Gute Treffer
-    gute_woerter = ["bekanntmachungen", "pressemitteilungen", "aktuelles", "stadtentwicklung", "bauen", "news"]
-    for wort in gute_woerter:
-        if wort in link_text or wort in link_url:
-            score += 20
+# Google Gemini konfigurieren
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-    # Minuspunkte (Müll vermeiden)
-    schlechte_woerter = ["kultur", "tourismus", "freizeit", "sport", "schulen", "kitas", "impressum", "datenschutz",
-                         "login", "karriere"]
-    for wort in schlechte_woerter:
-        if wort in link_text or wort in link_url:
-            score -= 50
-
-    return max(0, min(100, score))
+# Wir erzwingen JSON als Ausgabeformat für maximale Zuverlässigkeit
+model = genai.GenerativeModel(
+    'gemini-3.1-flash-lite-preview',
+    generation_config={"response_mime_type": "application/json"}
+)
 
 
-# ==========================================
-# 2. DIE INHALTS-EXTRAKTION (GEMINI KI)
-# ==========================================
-def extrahiere_baumassnahmen_mit_ki(sichtbarer_text, aktuelle_url):
-    """Gibt den Text an Gemini und fordert ein striktes JSON-Array zurück."""
-
-    # NEU: Prompt (nach 2024)
-    prompt = f"""
-    Du bist ein technischer Analyst für ein Telekommunikationsunternehmen. 
-    Lies den folgenden Text einer behördlichen Webseite. 
-    Wir suchen AUSSCHLIESSLICH nach echten physischen Baumaßnahmen, bei denen der Boden geöffnet wird (Tiefbau, Straßenbau, Leitungsbau, Rohrverlegung, Erschließung, Breitbandausbau) SOWIE nach ausgewiesenen Sanierungsgebieten und Ausbaugebieten.
-
-    WICHTIGSTE REGELN: 
-    1. Ignoriere reine Verkehrshinweise, Staumeldungen, Blitzer, Unfälle, Straßenfeste, "Verkehrstipps", "Verkehrsversuche" oder kurzfristige Sperrungen ohne Erdarbeiten komplett! Wenn es kein echter Bau oder Sanierungsgebiet ist, nimm es nicht auf.
-    2. ZEITFILTER: Berücksichtige AUSSCHLIESSLICH Projekte, die nach dem Jahr 2024 (also 2025 oder später) begonnen oder beendet wurden/werden. Historische Projekte aus 2024 oder früher zwingend ignorieren!
-
-    Extrahiere die Daten EXAKT in folgendes JSON-Format:
-    [
-        {{
-            "titel": "Kurze Beschreibung (z.B. Ausbau L123 oder Sanierungsgebiet Innenstadt)",
-            "ort": "Betroffene Straße, Ortsteil oder Gebietsname",
-            "genaue_lage": "Exakte Hausnummern, Straßenabschnitte von-bis, Kreuzungen oder Koordinaten (falls im Text genannt, sonst null)",
-            "art_der_massnahme": "z.B. Straßenbau, Kanalbau, Wasserleitungen, Sanierungsgebiet",
-            "startdatum": "YYYY-MM-DD oder null",
-            "enddatum": "YYYY-MM-DD oder null",
-            "ausfuehrende_stelle": "z.B. Stadtwerke (oder null)",
-            "link": "{aktuelle_url}"
-        }}
-    ]
-    Gib AUSSCHLIESSLICH das gültige JSON-Array zurück. Wenn im Text keine relevanten Baumaßnahmen stehen, gib zwingend [] zurück.
-
-    Text der Webseite:
-    {sichtbarer_text}
-    """
-
-    print("Sende Text an Gemini Flash zur Analyse...")
-
-    try:
-        model = genai.GenerativeModel(
-            'gemini-3.1-flash-lite-preview',
-            generation_config={"response_mime_type": "application/json"}
-        )
-        response = model.generate_content(prompt)
-        ki_antwort = response.text
-        daten = json.loads(ki_antwort)
-
-        # --- NEU: Harter Python-Datumsfilter ---
-        def ist_nach_2024(datum_str):
-            if not datum_str or datum_str == "null":
-                return False
-            try:
-                # Schneidet das Jahr aus "YYYY-MM-DD" aus und prüft es
-                jahr = int(str(datum_str)[:4])
-                return jahr > 2024
-            except ValueError:
-                return False
-
-        saubere_daten = []
-        for d in daten:
-            # 1. Grundprüfung: Hat der Eintrag Titel und Ort?
-            if d.get("titel") and d.get("ort"):
-                start = d.get("startdatum")
-                ende = d.get("enddatum")
-
-                # 2. Datumsprüfung
-                if start or ende:
-                    # Wenn mindestens ein Datum existiert, muss es nach 2020 sein
-                    if ist_nach_2024(start) or ist_nach_2024(ende):
-                        saubere_daten.append(d)
-                else:
-                    # WICHTIG: Wenn die KI im Text *gar kein* Datum finden konnte (beides null),
-                    # lassen wir die Maßnahme trotzdem durch. Da sie auf der aktuellen Behörden-Webseite
-                    # steht, ist sie mit sehr hoher Wahrscheinlichkeit aktuell.
-                    # (Falls du *nur* Maßnahmen mit explizit genanntem Datum willst, entferne diesen else-Block).
-                    saubere_daten.append(d)
-
-        return saubere_daten
-
-    except Exception as e:
-        print(f"❌ Fehler bei der KI-Verarbeitung: {e}")
-        return []
-
-# ==========================================
-
-# 3. VERBINDUNG ZUR DATENBANK (API)
-
-# ==========================================
-
-def send_to_api(massnahme):
-    try:
-
-        response = requests.post(API_URL, json=massnahme)
-
-        if response.status_code == 200:
-
-            print(f"GESPEICHERT: {massnahme.get('titel')} in {massnahme.get('ort')}")
-
-        elif response.status_code == 400:
-
-            print(f"⏭ÜBERSPRUNGEN (existiert schon): {massnahme.get('titel')}")
-
-        else:
-
-            print(f"❌ API-Fehler {response.status_code}: {response.text}")
-
-    except requests.exceptions.ConnectionError:
-
-        print("❌ Verbindungsfehler zur API. Läuft main.py auf Port 8000?")
+# Datenbankverbindung
+def get_db_connection():
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS"),
+        port=os.getenv("DB_PORT")
+    )
 
 
-# ==========================================
+# --- 2. HILFSFUNKTIONEN FÜRS SCRAPING ---
+def is_relevant_url(url):
+    """Filtert URLs heraus, die keine inhaltlichen Ergebnisse bringen."""
+    ignore_keywords = ["impressum", "datenschutz", "kontakt", "sitemap", "login", "agb", ".pdf", ".jpg"]
+    return not any(keyword in url.lower() for keyword in ignore_keywords)
 
-# 4. DER HAUPT-CRAWLER (Best-First Search)
 
-# ==========================================
+def extract_main_text(html):
+    """Extrahiert den reinen Text ohne Navigation, Footer und Code."""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+        tag.decompose()
+    return soup.get_text(separator=" ", strip=True)
 
-def run_crawler(start_url, max_seiten=10):
-    besuchte_seiten = set()
 
-    warteschlange = []
+def get_subpages(start_url, max_pages):
+    """Holt die Startseite und bis zu max_pages relevante Unterseiten."""
+    visited = set()
+    to_visit = [start_url]
+    collected_urls = []
+    base_domain = urlparse(start_url).netloc
 
-    # Start-URL in die Priority-Queue packen (Score -100 bedeutet: SEHR WICHTIG)
+    # Header setzen, damit der Crawler nicht direkt geblockt wird
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-    heapq.heappush(warteschlange, (-100, start_url))
+    while to_visit and len(collected_urls) < max_pages:
+        current_url = to_visit.pop(0)
 
-    seiten_besucht_count = 0
-
-    print(f"Starte Crawler auf: {start_url}")
-
-    while warteschlange and seiten_besucht_count < max_seiten:
-
-        # Den vielversprechendsten Link holen (kleinster Wert zuerst, da negativ)
-
-        score_negativ, aktuelle_url = heapq.heappop(warteschlange)
-
-        if aktuelle_url in besuchte_seiten:
+        if current_url in visited:
             continue
 
-        print(f"\n--- Seite {seiten_besucht_count + 1}/{max_seiten} ---")
-
-        print(f"Besuche: {aktuelle_url} (Relevanz-Score: {-score_negativ})")
-
-        besuchte_seiten.add(aktuelle_url)
-
-        seiten_besucht_count += 1
+        visited.add(current_url)
 
         try:
+            response = requests.get(current_url, headers=headers, timeout=CONFIG["timeout_seconds"])
+            if response.status_code != 200:
+                continue
 
-            # HTML herunterladen (Timeout auf 10s, tun als wären wir ein Browser)
+            collected_urls.append((current_url, response.text))
 
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-
-            response = requests.get(aktuelle_url, headers=headers, timeout=10)
-
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            # 1. Text für die KI extrahieren (ohne unsichtbare Scripte)
-
-            for script in soup(["script", "style", "nav", "footer"]):
-                script.extract()
-
-            sichtbarer_text = soup.get_text(separator=' ', strip=True)
-
-            # 2. KI-Analyse durchführen
-
-            if len(sichtbarer_text) > 100:  # Leere Seiten überspringen
-
-                gefundene_massnahmen = extrahiere_baumassnahmen_mit_ki(sichtbarer_text, aktuelle_url)
-
-                for massnahme in gefundene_massnahmen:
-                    send_to_api(massnahme)
-
-            # 3. Neue Links für die Warteschlange suchen
-
+            # Neue Links auf der Seite finden
+            soup = BeautifulSoup(response.text, "html.parser")
             for link in soup.find_all('a', href=True):
-
-                link_text = link.text.strip()
-
-                neuer_link = urljoin(aktuelle_url, link['href'])
-
-                # Nur interne Links der gleichen Hauptseite beachten
-
-                if neuer_link.startswith(start_url) and neuer_link not in besuchte_seiten:
-
-                    link_score = bewerte_link(link_text, neuer_link)
-
-                    # Nur Links aufnehmen, die zumindest etwas relevant sein könnten
-
-                    if link_score > 0:
-                        heapq.heappush(warteschlange, (-link_score, neuer_link))
-
-
+                next_url = urljoin(start_url, link['href'])
+                # Nur Links der gleichen Domain und relevante URLs
+                if urlparse(next_url).netloc == base_domain and is_relevant_url(next_url) and next_url not in visited:
+                    to_visit.append(next_url)
 
         except Exception as e:
+            print(f"Fehler beim Laden von {current_url}: {e}")
 
-            print(f"Fehler beim Laden von {aktuelle_url}: {e}")
+    return collected_urls
 
-        # Pause, um die Server der Kommunen nicht zu überlasten
 
-        time.sleep(2)
+# --- 3. KI ANALYSE ---
+def analyze_with_gemini(gesammelter_text):
+    kategorien_string = json.dumps(CONFIG["ziel_kategorien"], ensure_ascii=False, indent=2)
 
+    prompt = f"""
+    Du bist ein hochspezialisierter Analyst für kommunale Bau- und Infrastrukturdaten.
+    Extrahiere AUSSCHLIESSLICH Maßnahmen, die in diese Kategorien passen:
+    {kategorien_string}
+
+    STRIKTE REGELN:
+    - Ignoriere lokale Feste, Verwaltungsdienstleistungen, PR, Kioske, etc.
+
+    Antworte AUSSCHLIESSLICH mit einem JSON-Objekt. Schema:
+    {{
+        "massnahmen": [
+            {{
+                "kategorie": "Die passende Hauptkategorie",
+                "massnahme": "Kurzer, prägnanter Titel",
+                "adresse": "Ort oder Adresse (oder null)",
+                "massnahme_start": "Startdatum im Format YYYY-MM-DD (oder null)",
+                "massnahme_ende": "Enddatum im Format YYYY-MM-DD (oder null)"
+            }}
+        ]
+    }}
+
+    Hier ist der Text:
+    {gesammelter_text}
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        data = json.loads(response.text)
+        return data.get("massnahmen", [])
+    except Exception as e:
+        print(f"Fehler bei der Gemini API: {e}")
+        return []
+
+
+# --- 4. HAUPT-LOGIK (CRAWLER LOOP) ---
+def run_crawler():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    max_targets = CONFIG["max_targets"]
+    max_subpages = CONFIG["max_subpages"]
+
+    print(f"Starter Crawler-Durchlauf: Max. {max_targets} Behörden, je max. {max_subpages} Seiten.")
+
+    # Hole Behörden, die noch nie oder lange nicht gecrawlt wurden, limitiert durch CONFIG
+    cursor.execute("""
+        SELECT ags, url, ort FROM crawl_targets 
+        ORDER BY last_scanned ASC NULLS FIRST, id ASC LIMIT %s
+    """, (max_targets,))
+    targets = cursor.fetchall()
+
+    if not targets:
+        print("Keine Ziele in der Datenbank gefunden.")
+        return
+
+    for ags, start_url, ort in targets:
+        print(f"\nStarte Crawl für: {ort} ({start_url})")
+        start_time = datetime.now()
+
+        # 1. Sammle Unterseiten limitiert durch CONFIG
+        pages_data = get_subpages(start_url, max_pages=max_subpages)
+        anzahl_links = len(pages_data)
+        print(f"-> {anzahl_links} Seiten gesammelt. Extrahiere Text...")
+
+        # 2. Text aggregieren
+        gesammelter_text = ""
+        for url, html in pages_data:
+            text = extract_main_text(html)
+            gesammelter_text += f"\n\n--- INHALT VON {url} ---\n{text}"
+
+        # 3. An Gemini schicken (nur ein einziger API Aufruf!)
+        print("-> Sende Daten an Gemini 3.1 Flash Lite...")
+        massnahmen_roh_liste = analyze_with_gemini(gesammelter_text)
+
+        # --- NEU: DATUMS-FILTERUNG ---
+        min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
+        massnahmen_liste = []
+
+        for item in massnahmen_roh_liste:
+            m_start = item.get("massnahme_start")
+            m_ende = item.get("massnahme_ende")
+
+            # 1. Bedingung: Maßnahme muss ein Start- ODER Enddatum haben
+            if not m_start and not m_ende:
+                continue
+
+            # 2. Bedingung: Wenn es ein Enddatum gibt, darf es nicht vor "heute" liegen
+            if m_ende:
+                try:
+                    ende_dt = datetime.strptime(m_ende, "%Y-%m-%d").date()
+                    if ende_dt < min_datum:
+                        continue  # Maßnahme ist in der Vergangenheit -> ignorieren
+                except ValueError:
+                    pass  # Falls Gemini das Datum nicht sauber als YYYY-MM-DD formatiert hat
+
+            massnahmen_liste.append(item)
+
+        print(f"-> Nach Filterung (Datum): {len(massnahmen_liste)} gültige Maßnahmen gefunden.")
+
+        end_time = datetime.now()
+
+        # Ergebnisse in die Datenbank schreiben
+        if massnahmen_liste:
+            for item in massnahmen_liste:
+                titel = f"[{item.get('kategorie')}] {item.get('massnahme')}"
+
+                # Hier werden die neuen Spalten massnahme_start und massnahme_ende befüllt
+                cursor.execute("""
+                            INSERT INTO crawl_results 
+                            (ags, start_time, end_time, status, gefundene_links, massnahme, adresse, massnahme_start, massnahme_ende)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                    ags, start_time, end_time, "Erfolgreich", anzahl_links,
+                    titel, item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende")
+                ))
+        else:
+            cursor.execute("""
+                        INSERT INTO crawl_results 
+                        (ags, start_time, end_time, status, gefundene_links)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (ags, start_time, end_time, "Keine validen Funde", anzahl_links))
+
+        # 5. Timestamp in Stammdaten aktualisieren
+        cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (end_time, ags))
+        conn.commit()
+
+        print(f"✓ {ort} abgeschlossen.")
+
+        # Pause zwischen den Zielen, wie in CONFIG definiert
+        time.sleep(CONFIG["sleep_between_targets"])
+
+    cursor.close()
+    conn.close()
     print("\nCrawler-Durchlauf beendet.")
 
 
 if __name__ == "__main__":
-    ziel_url = START_URL
-    limit = 5  # Standard-Limit
-
-    if len(sys.argv) > 1:
-        ziel_url = sys.argv[1]
-        print(f"Start-URL aus Argument übernommen: {ziel_url}")
-
-    if len(sys.argv) > 2:
-        try:
-            limit = int(sys.argv[2])
-            print(f"Seitenlimit aus Argument übernommen: {limit}")
-        except ValueError:
-            print("Ungültiges Limit angegeben, nutze Standardwert (5).")
-
-    run_crawler(ziel_url, max_seiten=limit)
-
+    run_crawler()

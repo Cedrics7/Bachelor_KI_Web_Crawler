@@ -16,7 +16,7 @@ KEYWORDS = {
 # Erweiterung der Keywords um Portale
 DISCOVERY_DOMAINS = [
     "bauleitplanung", "geoportal", "uvp-verbund",
-    "region-frankfurt-rhein-main", "landesplanung"
+    "landesplanung"
 ]
 
 class SmartCrawler:
