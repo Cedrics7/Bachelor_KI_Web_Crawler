@@ -67,17 +67,17 @@ def extract_main_text(html):
 
 
 def get_subpages(start_url, max_pages):
-    """Holt die Startseite und bis zu max_pages relevante Unterseiten."""
     visited = set()
     to_visit = [start_url]
     collected_urls = []
     base_domain = urlparse(start_url).netloc
-
-    # Header setzen, damit der Crawler nicht direkt geblockt wird
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
+    # NEU: Diese Wörter ziehen wir vor!
+    prio_keywords = ["aktuell", "news", "nachricht", "presse", "bekanntmachung", "bauen", "projekt", "sanierung"]
+
     while to_visit and len(collected_urls) < max_pages:
-        current_url = to_visit.pop(0)
+        current_url = to_visit.pop(0)  # Nimm das erste Element
 
         if current_url in visited:
             continue
@@ -90,14 +90,17 @@ def get_subpages(start_url, max_pages):
                 continue
 
             collected_urls.append((current_url, response.text))
-
-            # Neue Links auf der Seite finden
             soup = BeautifulSoup(response.text, "html.parser")
+
             for link in soup.find_all('a', href=True):
                 next_url = urljoin(start_url, link['href'])
-                # Nur Links der gleichen Domain und relevante URLs
+
                 if urlparse(next_url).netloc == base_domain and is_relevant_url(next_url) and next_url not in visited:
-                    to_visit.append(next_url)
+                    # NEU: Wenn ein Prio-Wort in der URL steckt, ganz vorne in die Warteschlange packen!
+                    if any(prio in next_url.lower() for prio in prio_keywords):
+                        to_visit.insert(0, next_url)
+                    else:
+                        to_visit.append(next_url)
 
         except Exception as e:
             print(f"Fehler beim Laden von {current_url}: {e}")
@@ -111,11 +114,10 @@ def analyze_with_gemini(gesammelter_text):
 
     prompt = f"""
     Du bist ein hochspezialisierter Analyst für kommunale Bau- und Infrastrukturdaten.
+    Ich übergebe dir Texte von verschiedenen URLs einer Gemeinde. Die URLs stehen immer über dem jeweiligen Textabschnitt.
+
     Extrahiere AUSSCHLIESSLICH Maßnahmen, die in diese Kategorien passen:
     {kategorien_string}
-
-    STRIKTE REGELN:
-    - Ignoriere lokale Feste, Verwaltungsdienstleistungen, PR, Kioske, etc.
 
     Antworte AUSSCHLIESSLICH mit einem JSON-Objekt. Schema:
     {{
@@ -125,15 +127,15 @@ def analyze_with_gemini(gesammelter_text):
                 "massnahme": "Kurzer, prägnanter Titel",
                 "adresse": "Ort oder Adresse (oder null)",
                 "massnahme_start": "Startdatum im Format YYYY-MM-DD (oder null)",
-                "massnahme_ende": "Enddatum im Format YYYY-MM-DD (oder null)"
+                "massnahme_ende": "Enddatum im Format YYYY-MM-DD (oder null)",
+                "quelle_url": "Die exakte URL (aus den Überschriften des Textes), unter der du diese Info gefunden hast"
             }}
         ]
     }}
 
-    Hier ist der Text:
+    Hier sind die Texte:
     {gesammelter_text}
     """
-
     try:
         response = model.generate_content(prompt)
         data = json.loads(response.text)
@@ -142,6 +144,16 @@ def analyze_with_gemini(gesammelter_text):
         print(f"Fehler bei der Gemini API: {e}")
         return []
 
+        # --- IN DER run_crawler() FUNKTION (Beim Speichern) ---
+        # Füge 'massnahme_url' in den INSERT-Befehl ein
+        cursor.execute("""
+                    INSERT INTO crawl_results 
+                    (ags, start_time, end_time, status, gefundene_links, massnahme, adresse, massnahme_start, massnahme_ende, massnahme_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+            ags, start_time, end_time, "Erfolgreich", anzahl_links,
+            titel, item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende"), item.get("quelle_url")
+        ))
 
 # --- 4. HAUPT-LOGIK (CRAWLER LOOP) ---
 def run_crawler():
