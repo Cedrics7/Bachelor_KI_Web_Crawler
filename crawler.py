@@ -8,16 +8,25 @@ from datetime import datetime, date
 from dotenv import load_dotenv
 import google.generativeai as genai
 from urllib.parse import urljoin, urlparse
+import hashlib
+import fitz
+from bs4 import XMLParsedAsHTMLWarning
+import warnings
 
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+
+#todo Patchnotes
 
 # =====================================================================
-# --- 1. CRAWLER KONFIGURATION (Anpassbare Parameter) ---
+# --- 1. CRAWLER KONFIGURATION ---
 # =====================================================================
 CONFIG = {
-    "max_targets": 2,  # Wie viele Behörden/Städte pro Durchlauf gecrawlt werden sollen (Hauptseiten)
-    "max_subpages": 5,  # Wie viele Unterseiten pro Behörde maximal gesammelt werden (inkl. Startseite)
-    "timeout_seconds": 10,  # Wie lange auf die Antwort einer Webseite gewartet wird
-    "sleep_between_targets": 2,  # Pause in Sekunden zwischen zwei Behörden (schont Server und API)
+    "max_log_lines": 200,
+    "max_targets": 3,
+    "max_subpages": 50,
+    "max_pdf_pages": 5,
+    "timeout_seconds": 10,
+    "sleep_between_targets": 2,
     "min_end_datum": str(date.today()),
     "ziel_kategorien": {
         "Sanierung": ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
@@ -26,21 +35,15 @@ CONFIG = {
         "Tiefbau": ["Tiefbau", "Straßenbau", "Kanalsanierung", "Brückenbau"]
     }
 }
-# =====================================================================
 
 load_dotenv()
-
-# Google Gemini konfigurieren
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-# Wir erzwingen JSON als Ausgabeformat für maximale Zuverlässigkeit
 model = genai.GenerativeModel(
     'gemini-3.1-flash-lite-preview',
     generation_config={"response_mime_type": "application/json"}
 )
 
 
-# Datenbankverbindung
 def get_db_connection():
     return psycopg2.connect(
         host=os.getenv("DB_HOST"),
@@ -51,210 +54,320 @@ def get_db_connection():
     )
 
 
-# --- 2. HILFSFUNKTIONEN FÜRS SCRAPING ---
-def is_relevant_url(url):
-    """Filtert URLs heraus, die keine inhaltlichen Ergebnisse bringen."""
-    ignore_keywords = ["impressum", "datenschutz", "kontakt", "sitemap", "login", "agb", ".pdf", ".jpg"]
-    return not any(keyword in url.lower() for keyword in ignore_keywords)
+# =====================================================================
+# --- 2. API LIMIT MANAGER ---
+# =====================================================================
+class TokenManager:
+    def __init__(self, rpm=12, tpm=200000, rpd=480):
+        self.rpm_limit = rpm
+        self.tpm_limit = tpm
+        self.rpd_limit = rpd
+        self.requests_this_minute = 0
+        self.tokens_this_minute = 0
+        self.requests_today = 0
+        self.minute_start_time = datetime.now()
+        self.day_start_time = date.today()
+
+    def check_limits(self, estimated_tokens):
+        if estimated_tokens >= self.tpm_limit:
+            print(f"!!! WARNUNG: Prompt zu groß ({estimated_tokens} Tokens)!")
+            return True
+
+        while True:
+            now = datetime.now()
+            if date.today() > self.day_start_time:
+                self.requests_today = 0
+                self.day_start_time = date.today()
+            if (now - self.minute_start_time).seconds >= 60:
+                self.requests_this_minute = 0
+                self.tokens_this_minute = 0
+                self.minute_start_time = now
+
+            if self.requests_today >= self.rpd_limit:
+                print("!!! Tageslimit erreicht.")
+                return False
+
+            if (self.requests_this_minute < self.rpm_limit) and \
+                    (self.tokens_this_minute + estimated_tokens < self.tpm_limit):
+                return True
+
+            wait_time = 65 - (now - self.minute_start_time).seconds
+            print(f"--- API Schutz: Pause für {wait_time}s ---")
+            time.sleep(max(wait_time, 1))
+
+    def update_usage(self, token_count):
+        self.requests_this_minute += 1
+        self.tokens_this_minute += token_count
+        self.requests_today += 1
+
+
+api_guard = TokenManager()
+
+
+# =====================================================================
+# --- 3. HILFSFUNKTIONEN & HASHING ---
+# =====================================================================
+def get_german_time():
+    return datetime.now().strftime("%d.%m.%Y, %H:%M:%S")
+
+
+def log_event(emoji, message):
+    zeit = get_german_time()
+    print(f"[{zeit}] {emoji} {message}")
+
+
+def write_history_log(event_type, message):
+    log_file = "crawler_history.txt"
+    zeit = get_german_time()
+    log_entry = f"[{zeit}] {event_type.upper()}: {message}\n"
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(log_entry)
+
+    # Datei auf 100 Zeilen begrenzen
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) > CONFIG["max_log_lines"]:
+            with open(log_file, "w", encoding="utf-8") as f:
+                f.writelines(lines[-CONFIG["max_log_lines"]:])
+    except FileNotFoundError:
+        pass
+
+
+def update_live_log(ort, status, funde=0, gespart=False):
+    log_data = {
+        "timestamp": datetime.now().strftime("%H:%M:%S"),
+        "aktueller_ort": ort,
+        "status": status,
+        "letzte_funde": funde,
+        "hash_match": gespart
+    }
+    with open("crawler_live_status.json", "w", encoding="utf-8") as f:
+        json.dump(log_data, f, ensure_ascii=False, indent=2)
+
+def extract_pdf_text(url, max_pages):
+    try:
+        response = requests.get(url, timeout=10)
+        with fitz.open(stream=response.content, filetype="pdf") as doc:
+            meta = doc.metadata
+            c_date = meta.get("creationDate", "")
+            if c_date.startswith("D:"):
+                year = int(c_date[2:6])
+                if year < 2024:
+                    print(f"      - Ignoriere altes PDF ({year})")
+                    return ""
+
+            text = ""
+            for page in doc[:max_pages]:
+                text += page.get_text()
+            return text
+    except Exception as e:
+        return ""
+
+
+def get_content_hash(text):
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 
 def extract_main_text(html):
-    """Extrahiert den reinen Text ohne Navigation, Footer und Code."""
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
         tag.decompose()
     return soup.get_text(separator=" ", strip=True)
 
 
+def is_relevant_url(url):
+    # .pdf hier NICHT ignorieren, da wir sie in get_subpages explizit verarbeiten
+    ignore = ["impressum", "datenschutz", "kontakt", "sitemap", "login", ".jpg", ".png"]
+    return not any(kw in url.lower() for kw in ignore)
+
+
 def get_subpages(start_url, max_pages):
-    visited = set()
-    to_visit = [start_url]
-    collected_urls = []
+    visited, to_visit = set(), [start_url]
+    html_collected = []
+    pdf_collected = []
     base_domain = urlparse(start_url).netloc
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-    # NEU: Diese Wörter ziehen wir vor!
-    prio_keywords = ["aktuell", "news", "nachricht", "presse", "bekanntmachung", "bauen", "projekt", "sanierung"]
+    # FIX: prio_keywords innerhalb der Funktion definiert
+    prio_keywords = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
 
-    while to_visit and len(collected_urls) < max_pages:
-        current_url = to_visit.pop(0)  # Nimm das erste Element
-
-        if current_url in visited:
-            continue
-
-        visited.add(current_url)
+    while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
+        curr = to_visit.pop(0)
+        if curr in visited: continue
+        visited.add(curr)
 
         try:
-            response = requests.get(current_url, headers=headers, timeout=CONFIG["timeout_seconds"])
-            if response.status_code != 200:
-                continue
+            resp = requests.get(curr, timeout=CONFIG["timeout_seconds"], headers={'User-Agent': 'BachelorCrawler/1.0'})
+            if resp.status_code == 200:
+                if curr.lower().endswith(".pdf"):
+                    print(f"  - Scanne PDF: {curr[:50]}...")
+                    # Aufruf mit max_pages aus CONFIG
+                    text = extract_pdf_text(curr, CONFIG["max_pdf_pages"])
+                    if text:
+                        pdf_collected.append((curr, text))
+                else:
+                    text = extract_main_text(resp.text)
+                    html_collected.append((curr, text))
 
-            collected_urls.append((current_url, response.text))
-            soup = BeautifulSoup(response.text, "html.parser")
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    for link in soup.find_all('a', href=True):
+                        nxt = urljoin(start_url, link['href'])
+                        if urlparse(nxt).netloc == base_domain and is_relevant_url(nxt) and nxt not in visited:
+                            if any(p in nxt.lower() for p in prio_keywords):
+                                to_visit.insert(0, nxt)
+                            else:
+                                to_visit.append(nxt)
+        except:
+            continue
 
-            for link in soup.find_all('a', href=True):
-                next_url = urljoin(start_url, link['href'])
-
-                if urlparse(next_url).netloc == base_domain and is_relevant_url(next_url) and next_url not in visited:
-                    # NEU: Wenn ein Prio-Wort in der URL steckt, ganz vorne in die Warteschlange packen!
-                    if any(prio in next_url.lower() for prio in prio_keywords):
-                        to_visit.insert(0, next_url)
-                    else:
-                        to_visit.append(next_url)
-
-        except Exception as e:
-            print(f"Fehler beim Laden von {current_url}: {e}")
-
-    return collected_urls
+    return html_collected + pdf_collected
 
 
-# --- 3. KI ANALYSE ---
+# =====================================================================
+# --- 4. KI ANALYSE ---
+# =====================================================================
+
 def analyze_with_gemini(gesammelter_text):
+    est_tokens = len(gesammelter_text) // 4
+    if not api_guard.check_limits(est_tokens): return []
+
     kategorien_string = json.dumps(CONFIG["ziel_kategorien"], ensure_ascii=False, indent=2)
 
     prompt = f"""
-    Du bist ein hochspezialisierter Analyst für kommunale Bau- und Infrastrukturdaten.
-    Ich übergebe dir Texte von verschiedenen URLs einer Gemeinde. Die URLs stehen immer über dem jeweiligen Textabschnitt.
+        Du bist ein Experte für die Analyse kommunaler Ausschreibungen und Bauprojekte.
 
-    Extrahiere AUSSCHLIESSLICH Maßnahmen, die in diese Kategorien passen:
-    {kategorien_string}
+        AUFGABE:
+        Extrahiere AUSSCHLIESSLICH echte Bau-, Infrastruktur- oder Sanierungsvorhaben.
 
-    Antworte AUSSCHLIESSLICH mit einem JSON-Objekt. Schema:
-    {{
-        "massnahmen": [
-            {{
-                "kategorie": "Die passende Hauptkategorie",
-                "massnahme": "Kurzer, prägnanter Titel",
-                "adresse": "Ort oder Adresse (oder null)",
-                "massnahme_start": "Startdatum im Format YYYY-MM-DD (oder null)",
-                "massnahme_ende": "Enddatum im Format YYYY-MM-DD (oder null)",
-                "quelle_url": "Die exakte URL (aus den Überschriften des Textes), unter der du diese Info gefunden hast"
-            }}
-        ]
-    }}
+        STRIKTE AUSSCHLUSSKRITERIEN - Ignoriere folgende Themen komplett:
+        - Beschaffung von Fahrzeugen (LKW, Feuerwehrfahrzeuge, Busse etc.). Das ist KEIN Tiefbau!
+        - Kursangebote, Thermalbad-Termine, Wellness-Programme oder medizinische Kurpläne (z.B. "AGES Kur").
+        - Stellenausschreibungen oder reine Dienstleistungen (z.B. Winterdienst).
+        - Kulturelle Veranstaltungen, Feste oder Sitzungstermine.
 
-    Hier sind die Texte:
-    {gesammelter_text}
-    """
+        KATEGORIEN:
+        {kategorien_string}
+
+        WICHTIG:
+        - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
+        - Jede Maßnahme MUSS ein Start- oder Enddatum haben.
+
+        Antworte im JSON-Format:
+        {{
+            "massnahmen": [
+                {{
+                    "kategorie": "...",
+                    "massnahme": "...",
+                    "adresse": "...",
+                    "massnahme_start": "YYYY-MM-DD",
+                    "massnahme_ende": "YYYY-MM-DD",
+                    "quelle_url": "..."
+                }}
+            ]
+        }}
+
+        Texte zum Analysieren:
+        {gesammelter_text}
+        """
     try:
         response = model.generate_content(prompt)
-        data = json.loads(response.text)
-        return data.get("massnahmen", [])
-    except Exception as e:
-        print(f"Fehler bei der Gemini API: {e}")
+        used = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else est_tokens
+        api_guard.update_usage(used)
+
+        raw = response.text.replace("```json", "").replace("```", "").strip()
+        return json.loads(raw).get("massnahmen", [])
+    except:
         return []
 
-        # --- IN DER run_crawler() FUNKTION (Beim Speichern) ---
-        # Füge 'massnahme_url' in den INSERT-Befehl ein
-        cursor.execute("""
-                    INSERT INTO crawl_results 
-                    (ags, start_time, end_time, status, gefundene_links, massnahme, adresse, massnahme_start, massnahme_ende, massnahme_url)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-            ags, start_time, end_time, "Erfolgreich", anzahl_links,
-            titel, item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende"), item.get("quelle_url")
-        ))
 
-# --- 4. HAUPT-LOGIK (CRAWLER LOOP) ---
+# --- 5. MAIN LOOP ---
+# --- 5. MAIN LOOP ---
 def run_crawler():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    max_targets = CONFIG["max_targets"]
-    max_subpages = CONFIG["max_subpages"]
+    targets_processed = 0
+    total_funde = 0
+    start_zeit_dt = datetime.now()
 
-    print(f"Starter Crawler-Durchlauf: Max. {max_targets} Behörden, je max. {max_subpages} Seiten.")
+    write_history_log("START", f"Beginne Durchlauf mit max. {CONFIG['max_targets']} Targets.")
 
-    # Hole Behörden, die noch nie oder lange nicht gecrawlt wurden, limitiert durch CONFIG
-    cursor.execute("""
-        SELECT ags, url, ort FROM crawl_targets 
-        ORDER BY last_scanned ASC NULLS FIRST, id ASC LIMIT %s
-    """, (max_targets,))
+    cursor.execute("SELECT ags, url, ort FROM crawl_targets ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
+                   (CONFIG["max_targets"],))
     targets = cursor.fetchall()
 
-    if not targets:
-        print("Keine Ziele in der Datenbank gefunden.")
-        return
+    min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
 
     for ags, start_url, ort in targets:
-        print(f"\nStarte Crawl für: {ort} ({start_url})")
         start_time = datetime.now()
 
-        # 1. Sammle Unterseiten limitiert durch CONFIG
-        pages_data = get_subpages(start_url, max_pages=max_subpages)
-        anzahl_links = len(pages_data)
-        print(f"-> {anzahl_links} Seiten gesammelt. Extrahiere Text...")
+        log_event("🔍", f"Target: {ort} ({start_url})")
+        update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
 
-        # 2. Text aggregieren
-        gesammelter_text = ""
-        for url, html in pages_data:
-            text = extract_main_text(html)
-            gesammelter_text += f"\n\n--- INHALT VON {url} ---\n{text}"
+        targets_processed += 1
+        pages = get_subpages(start_url, CONFIG["max_subpages"])
 
-        # 3. An Gemini schicken (nur ein einziger API Aufruf!)
-        print("-> Sende Daten an Gemini 3.1 Flash Lite...")
-        massnahmen_roh_liste = analyze_with_gemini(gesammelter_text)
+        text_bulk = ""
+        for url, content in pages:
+            if content and len(text_bulk) + len(content) < 500000:
+                text_bulk += f"\n--- URL: {url} ---\n{content}"
 
-        # --- NEU: DATUMS-FILTERUNG ---
-        min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
-        massnahmen_liste = []
+        if not text_bulk.strip():
+            log_event("⚠️", f"Kein Text für {ort} gefunden.")
+            update_live_log(ort, "⚠️ Kein Text gefunden")
+            cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (datetime.now(), ags))
+            conn.commit()
+            continue
 
-        for item in massnahmen_roh_liste:
-            m_start = item.get("massnahme_start")
-            m_ende = item.get("massnahme_ende")
+        content_hash = get_content_hash(text_bulk)
+        cursor.execute("SELECT id FROM crawl_results WHERE content_hash = %s", (content_hash,))
 
-            # 1. Bedingung: Maßnahme muss ein Start- ODER Enddatum haben
-            if not m_start and not m_ende:
-                continue
-
-            # 2. Bedingung: Wenn es ein Enddatum gibt, darf es nicht vor "heute" liegen
-            if m_ende:
-                try:
-                    ende_dt = datetime.strptime(m_ende, "%Y-%m-%d").date()
-                    if ende_dt < min_datum:
-                        continue  # Maßnahme ist in der Vergangenheit -> ignorieren
-                except ValueError:
-                    pass  # Falls Gemini das Datum nicht sauber als YYYY-MM-DD formatiert hat
-
-            massnahmen_liste.append(item)
-
-        print(f"-> Nach Filterung (Datum): {len(massnahmen_liste)} gültige Maßnahmen gefunden.")
-
-        end_time = datetime.now()
-
-        # Ergebnisse in die Datenbank schreiben
-        if massnahmen_liste:
-            for item in massnahmen_liste:
-                titel = f"[{item.get('kategorie')}] {item.get('massnahme')}"
-
-                # Hier werden die neuen Spalten massnahme_start und massnahme_ende befüllt
-                cursor.execute("""
-                            INSERT INTO crawl_results 
-                            (ags, start_time, end_time, status, gefundene_links, massnahme, adresse, massnahme_start, massnahme_ende)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (
-                    ags, start_time, end_time, "Erfolgreich", anzahl_links,
-                    titel, item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende")
-                ))
+        if cursor.fetchone():
+            log_event("🔒", f"Keine Änderungen in {ort} (Hash-Match).")
+            update_live_log(ort, "✅ Stand aktuell (Hash-Match)", gespart=True)
         else:
-            cursor.execute("""
-                        INSERT INTO crawl_results 
-                        (ags, start_time, end_time, status, gefundene_links)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (ags, start_time, end_time, "Keine validen Funde", anzahl_links))
+            log_event("🤖", f"Sende Daten für {ort} an Gemini...")
+            update_live_log(ort, "🤖 Gemini Analyse...")
+            found = analyze_with_gemini(text_bulk)
 
-        # 5. Timestamp in Stammdaten aktualisieren
-        cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (end_time, ags))
+            valid_count = 0
+            for item in found:
+                m_start = item.get("massnahme_start")
+                m_ende = item.get("massnahme_ende")
+                if not m_start and not m_ende: continue
+                if m_ende:
+                    try:
+                        if datetime.strptime(m_ende, "%Y-%m-%d").date() < min_datum: continue
+                    except:
+                        pass
+
+                valid_count += 1
+                cursor.execute("""
+                    INSERT INTO crawl_results (ags, start_time, end_time, status, massnahme, adresse, massnahme_start, massnahme_ende, massnahme_url, content_hash)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (ags, start_time, datetime.now(), "Erfolgreich",
+                      f"[{item.get('kategorie')}] {item.get('massnahme')}",
+                      item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende"),
+                      item.get("quelle_url"), content_hash))
+
+            total_funde += valid_count
+            log_event("✅", f"Analyse beendet: {valid_count} neue Funde für {ort}.")
+            update_live_log(ort, f"✅ Fertig: {valid_count} Funde", funde=valid_count)
+
+        cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (datetime.now(), ags))
         conn.commit()
-
-        print(f"✓ {ort} abgeschlossen.")
-
-        # Pause zwischen den Zielen, wie in CONFIG definiert
         time.sleep(CONFIG["sleep_between_targets"])
+
+    dauer = datetime.now() - start_zeit_dt
+    minuten, sekunden = divmod(dauer.seconds, 60)
+    summary = f"Beendet. {targets_processed} Orte gescannt, {total_funde} Funde. Dauer: {minuten}m {sekunden}s."
+
+    write_history_log("ENDE ", summary)
+    log_event("🏁", summary)
+    update_live_log("Standby", f"🏁 Letzter Scan: {summary}")
 
     cursor.close()
     conn.close()
-    print("\nCrawler-Durchlauf beendet.")
 
 
 if __name__ == "__main__":

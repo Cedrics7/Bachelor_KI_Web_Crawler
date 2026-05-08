@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telekom Crawler Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --magenta: #E20074;
+            --gray-light: #F3F3F3;
+        }
+        body { font-family: 'TeleNeo', sans-serif; background-color: var(--gray-light); }
+        .nav-link { cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.3s; }
+        .nav-link.active { border-bottom-color: var(--magenta); color: var(--magenta); font-weight: bold; }
+        .scale-card { background: white; border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 20px; }
+        .magenta-btn { background-color: var(--magenta); color: white; padding: 8px 16px; border-radius: 4px; font-weight: bold; }
+        .magenta-btn:hover { opacity: 0.9; }
+        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .online { background-color: #008522; }
+    </style>
+</head>
+<body>
+    <div style="height: 4px; background-color: var(--magenta);"></div>
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm px-8 py-4 flex items-center justify-between sticky top-0 z-50">
+        <div class="flex items-center gap-10">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/d/dd/Deutsche_Telekom_2022.svg" alt="Telekom" class="h-8">
+            <div class="flex gap-8">
+                <span onclick="switchPage('bestandsdaten')" id="nav-bestandsdaten" class="nav-link active">Bestandsdaten</span>
+                <span onclick="switchPage('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link">Bewegungsdaten</span>
+                <span onclick="switchPage('monitoring')" id="nav-monitoring" class="nav-link">Monitoring</span>
+            </div>
+        </div>
+        <div class="text-xs font-bold text-gray-500">
+            <span class="status-dot online"></span> API CONNECTED
+        </div>
+    </nav>
+
+    <main class="p-10 max-w-[1600px] mx-auto">
+
+        <!-- PAGE 1: BESTANDSDATEN -->
+        <div id="page-bestandsdaten" class="page-content">
+            <h1 class="text-3xl font-black mb-6">Bestandsdaten (Targets)</h1>
+            <div class="scale-card overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b-2 border-magenta-600 text-gray-500 text-xs uppercase font-bold">
+                            <th class="p-4">ID</th>
+                            <th class="p-4">Ort</th>
+                            <th class="p-4">AGS</th>
+                            <th class="p-4">Bundesland</th>
+                            <th class="p-4">Letzter Crawl</th>
+                            <th class="p-4">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-bestandsdaten">
+                        <!-- JS injected -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PAGE 2: BEWEGUNGSDATEN -->
+        <div id="page-bewegungsdaten" class="page-content hidden">
+            <h1 class="text-3xl font-black mb-6">Bewegungsdaten (Results)</h1>
+            <div class="scale-card overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b-2 border-magenta-600 text-gray-500 text-xs uppercase font-bold">
+                            <th class="p-4">Maßnahme</th>
+                            <th class="p-4">Ort / BL</th>
+                            <th class="p-4">Zeitraum</th>
+                            <th class="p-4">Quelle</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-bewegungsdaten">
+                        <!-- JS injected -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PAGE 3: MONITORING -->
+        <div id="page-monitoring" class="page-content hidden">
+            <h1 class="text-3xl font-black mb-6">Crawler Live-Monitoring</h1>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="scale-card">
+                    <p class="text-xs font-bold text-gray-400 uppercase">Aktuelles Ziel</p>
+                    <h2 id="live-ort" class="text-2xl font-black text-gray-800">-</h2>
+                </div>
+                <div class="scale-card">
+                    <p class="text-xs font-bold text-gray-400 uppercase">Funde heute</p>
+                    <h2 id="live-funde" class="text-2xl font-black text-[#E20074]">0</h2>
+                </div>
+                <div class="scale-card">
+                    <p class="text-xs font-bold text-gray-400 uppercase">Status</p>
+                    <h2 id="live-status" class="text-lg font-bold text-blue-600">Initialisierung...</h2>
+                    <p id="live-time" class="text-[10px] text-gray-400 mt-2"></p>
+                </div>
+            </div>
+
+            <div class="scale-card bg-zinc-900 text-green-400 font-mono text-sm h-[500px] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4 border-b border-zinc-700 pb-2">
+                    <span class="text-xs text-zinc-500 uppercase font-bold tracking-widest">crawler_history.txt</span>
+                    <span class="text-[10px] text-zinc-600">Auto-Refresh every 5s</span>
+                </div>
+                <pre id="monitoring-log" class="whitespace-pre-wrap"></pre>
+            </div>
+        </div>
+
+    </main>
+
+<script>
+    const API_BASE = "http://localhost:8000/api";
+    let monitoringInterval = null;
+
+    // --- NEU: Hilfsfunktion für den API Status ---
+    function setApiStatus(isOnline) {
+        const dot = document.querySelector('.status-dot');
+        const text = document.querySelector('.text-xs.font-bold.text-gray-500');
+        if (dot) {
+            dot.style.backgroundColor = isOnline ? "#008522" : "#E20074";
+        }
+        if (text) {
+            text.innerHTML = isOnline ?
+                '<span class="status-dot online"></span> API CONNECTED' :
+                '<span class="status-dot" style="background-color: #E20074;"></span> API OFFLINE';
+        }
+    }
+
+    function switchPage(pageId) {
+        document.querySelectorAll('.page-content').forEach(p => p.classList.add('hidden'));
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+        document.getElementById('page-' + pageId).classList.remove('hidden');
+        document.getElementById('nav-' + pageId).classList.add('active');
+
+        if (pageId === 'bestandsdaten') loadBestandsdaten();
+        if (pageId === 'bewegungsdaten') loadBewegungsdaten();
+
+        if (pageId === 'monitoring') {
+            loadMonitoring();
+            if(!monitoringInterval) monitoringInterval = setInterval(loadMonitoring, 5000);
+        } else {
+            clearInterval(monitoringInterval);
+            monitoringInterval = null;
+        }
+    }
+
+    async function loadBestandsdaten() {
+        try {
+            const res = await fetch(`${API_BASE}/bestandsdaten`);
+            if (!res.ok) throw new Error("Server Error");
+            const data = await res.json();
+            const tbody = document.getElementById('table-bestandsdaten');
+
+            tbody.innerHTML = data.map(row => `
+                <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
+                    <td class="p-4 font-bold text-gray-400 text-xs">${row.id || '-'}</td>
+                    <td class="p-4 font-bold text-gray-800">${row.ort || 'Unbekannt'}</td>
+                    <td class="p-4 text-gray-600 font-mono text-sm">${row.ags || '-'}</td>
+                    <td class="p-4 text-sm">${row.bundesland || '-'}</td>
+                    <td class="p-4 text-xs text-gray-500">${row.last_scanned || 'Nie'}</td>
+                    <td class="p-4"><a href="${row.url || '#'}" target="_blank" class="text-[#E20074] font-bold hover:underline">OPEN 🔗</a></td>
+                </tr>
+            `).join('');
+            setApiStatus(true);
+        } catch (e) {
+            console.error(e);
+            setApiStatus(false);
+        }
+    }
+
+    async function loadBewegungsdaten() {
+        try {
+            const res = await fetch(`${API_BASE}/bewegungsdaten`);
+            if (!res.ok) throw new Error("Server Error");
+            const data = await res.json();
+            const tbody = document.getElementById('table-bewegungsdaten');
+
+            tbody.innerHTML = data.map(row => `
+                <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
+                    <td class="p-4">
+                        <span class="text-[10px] font-bold text-[#E20074] uppercase">${row.kategorie || 'PROJEKT'}</span><br>
+                        <span class="font-bold text-gray-800">${row.massnahme || 'Keine Angabe'}</span>
+                    </td>
+                    <td class="p-4 text-sm text-gray-600">
+                        <span class="font-bold text-gray-700">${row.ort || 'Nicht zugeordnet'}</span><br>
+                        <span class="text-[10px] uppercase font-bold text-gray-400">${row.bundesland || '-'}</span>
+                    </td>
+                    <td class="p-4 text-[11px] font-mono text-gray-500 leading-tight">
+                        Von: ${row.massnahme_start || '-'}<br>Bis: ${row.massnahme_ende || '-'}
+                    </td>
+                    <td class="p-4"><a href="${row.massnahme_url || '#'}" target="_blank" class="magenta-btn text-[10px] w-full block text-center">QUELLE</a></td>
+                </tr>
+            `).join('');
+            setApiStatus(true);
+        } catch (e) {
+            console.error(e);
+            setApiStatus(false);
+        }
+    }
+
+    async function loadMonitoring() {
+        try {
+            const res = await fetch(`${API_BASE}/monitoring`);
+            if (!res.ok) throw new Error("Server Error");
+            const data = await res.json();
+
+            document.getElementById('live-ort').innerText = data.live.aktueller_ort || 'Standby';
+            document.getElementById('live-funde').innerText = data.live.letzte_funde || '0';
+            document.getElementById('live-status').innerText = data.live.status || 'Warte...';
+            document.getElementById('live-time').innerText = "Stand: " + new Date().toLocaleTimeString('de-DE');
+            document.getElementById('monitoring-log').innerText = data.history || 'Keine Logs vorhanden.';
+            setApiStatus(true);
+        } catch (e) {
+            setApiStatus(false);
+            document.getElementById('live-status').innerText = "API ERROR";
+        }
+    }
+
+    switchPage('bestandsdaten');
+</script>
+</body>
+</html>
