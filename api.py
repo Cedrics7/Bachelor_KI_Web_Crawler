@@ -5,12 +5,11 @@ import os
 import json
 import pandas as pd
 from dotenv import load_dotenv
-from functools import lru_cache
+from datetime import datetime
 
 load_dotenv()
 app = FastAPI()
 
-# Enable CORS for frontend access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,6 +28,82 @@ def get_db_connection():
     )
 
 
+@app.get("/api/stats")
+def get_stats():
+    try:
+        conn = get_db_connection()
+        # Monatsanfang berechnen
+        first_day = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        # 1. Orte Gesamt
+        df_total = pd.read_sql("SELECT COUNT(*) as count FROM crawl_targets", conn)
+        # 2. In diesem Monat gecrawlt
+        df_done = pd.read_sql(f"SELECT COUNT(*) as count FROM crawl_targets WHERE last_scanned >= '{first_day}'", conn)
+
+        total = int(df_total['count'][0])
+        done = int(df_done['count'][0])
+        conn.close()
+
+        return {
+            "total": total,
+            "done": done,
+            "pending": total - done
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/bestandsdaten")
+def get_bestandsdaten():
+    try:
+        conn = get_db_connection()
+        df = pd.read_sql("SELECT id, ort, ags, bundesland, last_scanned, url FROM crawl_targets ORDER BY id ASC", conn)
+        conn.close()
+
+        # 1. Datumsobjekte zu Strings konvertieren (behebt NaT-Fehler)
+        if 'last_scanned' in df.columns:
+            # Wir nutzen errors='coerce', um ungültige Daten zu NaT zu machen und dann zu '-'
+            df['last_scanned'] = pd.to_datetime(df['last_scanned'], errors='coerce').dt.strftime('%d.%m.%Y %H:%M').fillna('-')
+
+        # 2. DER FIX: Alle NaN (Not a Number) durch None ersetzen
+        # JSON akzeptiert None (wird zu null), aber kein NaN
+        df = df.replace({pd.NA: None, float('nan'): None})
+        df = df.where(pd.notnull(df), None)
+
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"Error Bestandsdaten: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bewegungsdaten")
+def get_bewegungsdaten():
+    try:
+        conn = get_db_connection()
+        query = """
+            SELECT r.massnahme, r.adresse, t.ort, r.massnahme_start, r.massnahme_ende, 
+                   r.massnahme_url, t.bundesland, r.kategorie 
+            FROM crawl_results r 
+            LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text 
+            WHERE r.massnahme IS NOT NULL
+            ORDER BY r.end_time DESC 
+            LIMIT 100
+        """
+        df = pd.read_sql(query, conn)
+        conn.close()
+
+        # Datumsspalten bereinigen
+        for col in ['massnahme_start', 'massnahme_ende']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).replace(['None', 'NaT', 'nan'], '-')
+
+        # Auch hier: Alle NaNs entfernen
+        df = df.where(pd.notnull(df), None)
+
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"Error Bewegungsdaten: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/monitoring")
 def get_monitoring():
     try:
@@ -46,52 +121,6 @@ def get_monitoring():
 
         return {"live": live_data, "history": history_log}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/bestandsdaten")
-def get_bestandsdaten():
-    try:
-        conn = get_db_connection()
-        df = pd.read_sql("SELECT id, ort, ags, bundesland, last_scanned, url FROM crawl_targets ORDER BY id ASC", conn)
-        conn.close()
-        return df.to_dict(orient="records")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/bewegungsdaten")
-def get_bewegungsdaten():
-    try:
-        conn = get_db_connection()
-        # Wir casten beide AGS Spalten explizit auf TEXT, um den Fehler zu vermeiden
-        # Und wir nutzen die korrekten Spaltennamen aus deinem Screenshot
-        query = """
-            SELECT 
-                r.massnahme, 
-                r.adresse,
-                t.ort, 
-                r.massnahme_start, 
-                r.massnahme_ende, 
-                r.massnahme_url, 
-                t.bundesland,
-                r.kategorie -- Laut Screenshot existiert diese Spalte separat
-            FROM crawl_results r 
-            LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text 
-            WHERE r.massnahme IS NOT NULL
-            ORDER BY r.end_time DESC 
-            LIMIT 100
-        """
-        df = pd.read_sql(query, conn)
-        conn.close()
-
-        # Falls Datumsfelder leer sind, in Strings umwandeln für JSON
-        df['massnahme_start'] = df['massnahme_start'].astype(str).replace('None', '-')
-        df['massnahme_ende'] = df['massnahme_ende'].astype(str).replace('None', '-')
-
-        return df.to_dict(orient="records")
-    except Exception as e:
-        print(f"DB Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
