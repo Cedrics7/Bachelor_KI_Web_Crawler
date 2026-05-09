@@ -1,0 +1,67 @@
+        :root {
+            --bg-page: #F3F3F3;
+            --bg-card: #FFFFFF;
+            --text-main: #262626; /* Dunkelgrau für den Light Mode */
+            --border-color: #D6D6D6; /* Heller Rahmen für Dropdowns */
+        }
+
+        body.dark-mode {
+            --bg-page: #000000;
+            --bg-card: #191919;
+            --text-main: #FFFFFF; /* Weiß für den Dark Mode */
+            --border-color: #444444; /* Dunkler Rahmen für Dropdowns */
+            --telekom-color-text-and-icon-standard: #FFFFFF !important;
+        }
+
+               body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Animation für das Icon-Element */
+scale-icon-action-light-dark-mode {
+    transition: transform 0.5s ease, opacity 0.3s ease;
+    cursor: pointer;
+}
+
+/* Kleiner "Dreh-Effekt" beim Klick */
+scale-icon-action-light-dark-mode:active {
+    transform: rotate(45deg) scale(0.9);
+}
+
+        .scale-card {
+            background-color: var(--bg-card);
+            color: var(--text-main);
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            padding: 24px;
+        }
+
+        .nav-link {
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            padding: 10px 0;
+            color: var(--text-main);
+        }
+
+        .nav-link.active {
+            border-bottom-color: var(--telekom-color-primary-standard);
+            color: var(--telekom-color-primary-standard);
+            font-weight: bold;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            background-color: #ccc; /* Fallback grau */
+        }
+
+        .dot-online {
+            background-color: #28a745; /* Grün */
+            box-shadow: 0 0 8px #28a745;
+        }
