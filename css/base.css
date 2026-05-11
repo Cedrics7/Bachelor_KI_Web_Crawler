@@ -1,0 +1,43 @@
+/* =============================================================
+   base.css — Reset, Body, Typografie
+   TeleNeo wird durch scale-components.css automatisch geladen.
+   font-family hier ist Fallback für native HTML-Elemente.
+   ============================================================= */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'TeleNeo', 'TeleNeo Web', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background-color: var(--dashboard-bg-page);
+    color: var(--dashboard-text);
+    min-height: 100dvh;
+    transition:
+        background-color var(--dashboard-transition),
+        color var(--dashboard-transition);
+}
+
+/* Nur native Elemente brauchen expliziten Override.
+   Scale-Komponenten regeln ihre Typografie im Shadow DOM. */
+h1, h2, h3, h4,
+input, select, textarea, button {
+    font-family: 'TeleNeo', 'TeleNeo Web', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* Barrierefreiheit: Fokus-Ring für Tastaturnavigation */
+:focus-visible {
+    outline: 2px solid var(--telekom-color-primary-standard);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* Bewegungssensitivität respektieren */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}

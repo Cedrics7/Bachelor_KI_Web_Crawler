@@ -1,66 +1,101 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crawler Dashboard | Telekom</title>
     <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/d/dd/Deutsche_Telekom_2022.svg">
-    <link rel="stylesheet" href="css/style.css">
-    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Scale Design System -->
     <link rel="stylesheet" href="node_modules/@telekom/scale-components/dist/scale-components/scale-components.css" />
     <script type="module" src="node_modules/@telekom/scale-components/dist/scale-components/scale-components.esm.js"></script>
-</head>
-<body class="transition-colors duration-300">
-    <div style="height: 4px; background-color: var(--telekom-color-primary-standard);"></div>
 
-    <nav class="shadow-sm px-8 py-4 flex items-center justify-between sticky top-0 z-50 transition-all duration-300 scale-card" id="main-nav">
-        <div class="flex items-center gap-10">
+    <!-- Dashboard Styles (aufgeteilt nach Verantwortung) -->
+    <link rel="stylesheet" href="css/tokens.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <link rel="stylesheet" href="css/layout.css" />
+    <link rel="stylesheet" href="css/theme-transition.css" />
+</head>
+
+<!--
+    Theme-System:
+    - html.light / html.dark  => CSS-Variablen-Kontext (tokens.css)
+    - body[data-mode]         => Scale-Komponenten-Kontext
+    - Scale Web Components    => erhalten mode-Prop per JS (theme.js)
+-->
+<body data-mode="light">
+
+    <!-- Telekom Brand Accent Bar -->
+    <div class="telekom-accent-bar"></div>
+
+    <!-- =========================================================
+         NAVIGATION
+    ========================================================= -->
+    <nav class="scale-card nav-bar" id="main-nav">
+        <div class="nav-left">
             <scale-logo variant="magenta" transparent="yes"></scale-logo>
-            <div class="flex gap-8">
-                <span onclick="updateUrl('bestandsdaten')" id="nav-bestandsdaten" class="nav-link active uppercase text-xs tracking-widest cursor-pointer">Bestandsdaten</span>
-                <span onclick="updateUrl('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link uppercase text-xs tracking-widest cursor-pointer">Bewegungsdaten</span>
-                <span onclick="updateUrl('monitoring')" id="nav-monitoring" class="nav-link uppercase text-xs tracking-widest cursor-pointer">Monitoring</span>
+            <div class="nav-links">
+                <span onclick="updateUrl('bestandsdaten')" id="nav-bestandsdaten" class="nav-link active">Bestandsdaten</span>
+                <span onclick="updateUrl('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link">Bewegungsdaten</span>
+                <span onclick="updateUrl('monitoring')"    id="nav-monitoring"     class="nav-link">Monitoring</span>
             </div>
         </div>
-        <div class="flex items-center gap-6">
-            <scale-icon-action-light-dark-mode
-                id="theme-icon"
-                variant="primary"
-                accessibility-title="Design umschalten"
+        <div class="nav-right">
+            <!--
+                Scale-konform: scale-button als interaktiver Wrapper,
+                Icon innen mit decorative-Attribut (aria-label am Button).
+            -->
+            <scale-button
+                id="theme-toggle-btn"
+                variant="ghost"
+                icon-only
+                aria-label="Design umschalten"
                 onclick="toggleTheme()"
-                class="cursor-pointer">
-            </scale-icon-action-light-dark-mode>
-            <div class="text-xs font-bold flex items-center" id="api-status-text">
+                mode="light">
+                <scale-icon-action-light-dark-mode
+                    id="theme-icon"
+                    decorative
+                    mode="light">
+                </scale-icon-action-light-dark-mode>
+            </scale-button>
+
+            <div class="api-status" id="api-status-text">
                 <span class="status-dot dot-online" id="api-status-dot"></span>
                 <span id="api-status-label">API LIVE</span>
             </div>
         </div>
     </nav>
 
-    <main class="p-10 max-w-[1600px] mx-auto">
-        <div id="kpi-row" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div class="scale-card border-l-4 border-gray-400 p-6">
-                <p class="text-xs font-bold uppercase opacity-70">Orte Gesamt</p>
-                <h2 id="kpi-total" class="text-3xl font-black">0</h2>
-            </div>
-            <div class="scale-card border-l-4 border-green-500 p-6">
-                <p class="text-xs font-bold uppercase opacity-70">Diesen Monat gecrawlt</p>
-                <h2 id="kpi-done" class="text-3xl font-black" style="color: var(--telekom-color-success-standard) !important;">0</h2>
-            </div>
-            <div class="scale-card border-l-4 p-6" style="border-color: var(--telekom-color-primary-standard);">
-                <p class="text-xs font-bold uppercase opacity-70">Diesen Monat ausstehend</p>
-                <h2 id="kpi-pending" class="text-3xl font-black" style="color: var(--telekom-color-primary-standard) !important;">0</h2>
-            </div>
-        </div>
+    <!-- =========================================================
+         MAIN CONTENT
+    ========================================================= -->
+    <main class="dashboard-main">
 
+        <!-- KPI CARDS -->
+        <section class="kpi-grid" id="kpi-row">
+            <div class="scale-card kpi-card kpi-card--neutral">
+                <p class="kpi-label">Orte Gesamt</p>
+                <h2 id="kpi-total" class="kpi-value">0</h2>
+            </div>
+            <div class="scale-card kpi-card kpi-card--success">
+                <p class="kpi-label">Diesen Monat gecrawlt</p>
+                <h2 id="kpi-done" class="kpi-value kpi-value--success">0</h2>
+            </div>
+            <div class="scale-card kpi-card kpi-card--primary">
+                <p class="kpi-label">Diesen Monat ausstehend</p>
+                <h2 id="kpi-pending" class="kpi-value kpi-value--primary">0</h2>
+            </div>
+        </section>
+
+        <!-- =====================================================
+             SEITE: BESTANDSDATEN
+        ===================================================== -->
         <div id="page-bestandsdaten" class="page-content">
-            <div class="flex justify-between items-end mb-6">
-                <h1 class="text-3xl font-black">Bestandsdaten</h1>
-                <div class="flex gap-4 items-center">
-                    <scale-text-field
-                        id="filter-bestandsdaten-suche"
-                        label="Suche Ort/AGS...">
-                    </scale-text-field>
+            <div class="page-header">
+                <h1 class="page-title">Bestandsdaten</h1>
+                <div class="filter-bar">
+                    <scale-text-field id="filter-bestandsdaten-suche" label="Suche Ort/AGS..." mode="light"></scale-text-field>
                     <select id="filter-bestandsdaten-status" class="dashboard-select" onchange="updateUrl(null, { status: this.value })">
                         <option value="Alle">Crawl-Status: Alle</option>
                         <option value="Gecrawlt">Bereits gecrawlt</option>
@@ -68,9 +103,8 @@
                     </select>
                 </div>
             </div>
-
-            <div class="scale-card overflow-x-auto">
-                <scale-table>
+            <div class="scale-card table-wrapper">
+                <scale-table id="table-bestandsdaten-wrapper" mode="light">
                     <table class="w-full text-left">
                         <thead>
                             <tr>
@@ -85,22 +119,22 @@
                         <tbody id="table-bestandsdaten"></tbody>
                     </table>
                 </scale-table>
-                <div id="pagination-controls" class="flex justify-center items-center gap-4 mt-6 p-4"></div>
+                <div id="pagination-controls" class="pagination-bar"></div>
             </div>
         </div>
 
+        <!-- =====================================================
+             SEITE: BEWEGUNGSDATEN
+        ===================================================== -->
         <div id="page-bewegungsdaten" class="page-content hidden">
-            <div class="mb-6">
-                <h1 class="text-3xl font-black mb-4">Bewegungsdaten</h1>
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded scale-card">
-                    <scale-text-field
-                        id="filter-beweg-suche"
-                        label="Stichwort...">
-                    </scale-text-field>
-                    <select id="filter-beweg-bl" class="dashboard-select" onchange="updateUrl(null, { bl: this.value })">
+            <div class="page-header page-header--stacked">
+                <h1 class="page-title">Bewegungsdaten</h1>
+                <div class="scale-card filter-grid">
+                    <scale-text-field id="filter-beweg-suche" label="Stichwort..." mode="light"></scale-text-field>
+                    <select id="filter-beweg-bl"   class="dashboard-select" onchange="updateUrl(null, { bl: this.value })">
                         <option value="Alle">Bundesland: Alle</option>
                     </select>
-                    <select id="filter-beweg-kat" class="dashboard-select" onchange="updateUrl(null, { kat: this.value })">
+                    <select id="filter-beweg-kat"  class="dashboard-select" onchange="updateUrl(null, { kat: this.value })">
                         <option value="Alle">Kategorie: Alle</option>
                     </select>
                     <select id="filter-beweg-sort" class="dashboard-select" onchange="updateUrl(null, { sort: this.value })">
@@ -109,60 +143,70 @@
                     </select>
                 </div>
             </div>
-
-            <div class="scale-card overflow-x-auto">
-                <scale-table>
+            <div class="scale-card table-wrapper">
+                <scale-table id="table-bewegungsdaten-wrapper" mode="light">
                     <table class="w-full text-left">
                         <thead>
                             <tr>
-                                <th class="p-3 w-2/5">Maßnahme</th>
-                                <th class="p-3">Ort / Bundesland</th>
-                                <th class="p-3">Adresse</th>
-                                <th class="p-3">Zeitraum</th>
-                                <th class="p-3">Gefunden am</th>
-                                <th class="p-3 text-right">Quelle</th>
+                                <th class="col-massnahme">Maßnahme</th>
+                                <th>Ort / Bundesland</th>
+                                <th>Adresse</th>
+                                <th>Zeitraum</th>
+                                <th>Gefunden am</th>
+                                <th class="text-right">Quelle</th>
                             </tr>
                         </thead>
                         <tbody id="table-bewegungsdaten"></tbody>
                     </table>
                 </scale-table>
-                <div id="pagination-controls-beweg" class="flex justify-center items-center gap-4 mt-6 p-4"></div>
+                <div id="pagination-controls-beweg" class="pagination-bar"></div>
             </div>
         </div>
 
+        <!-- =====================================================
+             SEITE: MONITORING
+        ===================================================== -->
         <div id="page-monitoring" class="page-content hidden">
-            <h1 class="text-3xl font-black mb-6">Crawler Live-Monitoring</h1>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="scale-card p-6">
-                    <p class="text-xs font-bold uppercase opacity-60">Aktuelles Ziel</p>
-                    <h2 id="live-ort" class="text-2xl font-black">-</h2>
+            <h1 class="page-title monitoring-title">Crawler Live-Monitoring</h1>
+            <div class="monitoring-kpi-grid">
+                <div class="scale-card monitoring-kpi">
+                    <p class="kpi-label">Aktuelles Ziel</p>
+                    <h2 id="live-ort" class="monitoring-value">-</h2>
                 </div>
-                <div class="scale-card p-6">
-                    <p class="text-xs font-bold uppercase opacity-60">Funde heute</p>
-                    <h2 id="live-funde" class="text-2xl font-black" style="color: var(--telekom-color-primary-standard) !important;">0</h2>
+                <div class="scale-card monitoring-kpi">
+                    <p class="kpi-label">Funde heute</p>
+                    <h2 id="live-funde" class="monitoring-value kpi-value--primary">0</h2>
                 </div>
-                <div class="scale-card p-6">
-                    <p class="text-xs font-bold uppercase opacity-60">Status</p>
-                    <h2 id="live-status" class="text-lg font-bold italic" style="color: var(--telekom-color-info-standard) !important;">Initialisierung...</h2>
-                    <p id="live-time" class="text-[10px] opacity-50 mt-2 font-mono"></p>
+                <div class="scale-card monitoring-kpi">
+                    <p class="kpi-label">Status</p>
+                    <h2 id="live-status" class="monitoring-status">Initialisierung...</h2>
+                    <p id="live-time" class="monitoring-time"></p>
                 </div>
             </div>
-
-            <div class="scale-card text-green-400 font-mono text-sm h-[500px] overflow-y-auto p-4" style="background-color: #111 !important;">
-                <div class="flex justify-between items-center mb-4 border-b border-zinc-800 pb-2">
-                    <span class="text-xs uppercase font-bold opacity-40">crawler history</span>
-                    <span class="text-[10px] text-green-600 animate-pulse">● Auto-Refresh active</span>
+            <div class="log-panel">
+                <div class="log-header">
+                    <span class="log-title">crawler history</span>
+                    <span class="log-indicator">&#9679; Auto-Refresh active</span>
                 </div>
-                <pre id="monitoring-log" class="whitespace-pre-wrap text-xs leading-relaxed text-green-500"></pre>
+                <pre id="monitoring-log" class="log-content">Keine Logs vorhanden.</pre>
             </div>
         </div>
+
     </main>
 
-    <scale-modal id="detail-modal" heading="Details anzeigen">
+    <!-- =========================================================
+         DETAIL MODAL
+         mode="light" initial — wird per applyTheme() aktualisiert
+    ========================================================= -->
+    <scale-modal id="detail-modal" heading="Details anzeigen" mode="light">
         <div id="modal-content"></div>
-        <scale-button slot="footer" variant="secondary" onclick="updateUrl(null, {id: null})">Schließen</scale-button>
+        <scale-button slot="footer" variant="secondary" mode="light" onclick="updateUrl(null, {id: null})">Schließen</scale-button>
     </scale-modal>
 
-    <script src="js/scripts.js"></script>
+    <!-- JS Module — Reihenfolge: theme zuerst (kein Flash), dann router -->
+    <script src="js/theme.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/router.js"></script>
 </body>
 </html>

@@ -1,0 +1,72 @@
+/* =============================================================
+   layout.css — Seitenlayout, Grids, Responsive Breakpoints
+   ============================================================= */
+
+/* Haupt-Container */
+.dashboard-main {
+    padding: 2.5rem;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* KPI Grid */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+}
+
+@media (min-width: 768px) {
+    .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Seiten-Sichtbarkeit */
+.page-content.hidden { display: none; }
+
+/* Seiten-Header */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.page-header--stacked {
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.page-title {
+    font-size: 1.875rem;
+    font-weight: 900;
+    line-height: 1.15;
+    color: var(--dashboard-text);
+}
+
+/* Filter-Grid (Bewegungsdaten: 4 Spalten ab Tablet) */
+.filter-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    width: 100%;
+    margin-top: 1rem;
+}
+
+@media (min-width: 768px) {
+    .filter-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Monitoring KPI Grid */
+.monitoring-kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+@media (min-width: 768px) {
+    .monitoring-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+}

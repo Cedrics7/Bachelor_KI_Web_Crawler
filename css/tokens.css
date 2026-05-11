@@ -1,0 +1,48 @@
+/* =============================================================
+   tokens.css — CSS Design Tokens
+   Eigene --dashboard-* Variablen, Scale --telekom-* bleiben unangetastet.
+   Theme-Switch: html.light / html.dark (gesetzt von theme.js)
+   ============================================================= */
+
+:root,
+html.light {
+    /* Hintergründe */
+    --dashboard-bg-page:            #F3F3F3;
+    --dashboard-bg-card:            #FFFFFF;
+
+    /* Text */
+    --dashboard-text:               #262626;
+    --dashboard-text-muted:         rgba(38, 38, 38, 0.6);
+
+    /* Rahmen */
+    --dashboard-border:             #D6D6D6;
+
+    /* Native Selects (Scale-Komponenten regeln ihr Styling intern) */
+    --dashboard-select-bg:          #FFFFFF;
+    --dashboard-select-text:        #262626;
+    --dashboard-select-border:      #D6D6D6;
+    --dashboard-select-option-bg:   #FFFFFF;
+    --dashboard-select-option-text: #262626;
+
+    /* Globale Transition-Kurve für Theme-Wechsel */
+    --dashboard-transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.dark {
+    --dashboard-bg-page:            #000000;
+    --dashboard-bg-card:            #191919;
+
+    --dashboard-text:               #FFFFFF;
+    --dashboard-text-muted:         rgba(255, 255, 255, 0.55);
+
+    --dashboard-border:             #444444;
+
+    --dashboard-select-bg:          #191919;
+    --dashboard-select-text:        #FFFFFF;
+    --dashboard-select-border:      #444444;
+    --dashboard-select-option-bg:   #191919;
+    --dashboard-select-option-text: #FFFFFF;
+
+    /* Scale-Token für native Text-Elemente überschreiben */
+    --telekom-color-text-and-icon-standard: #FFFFFF;
+}

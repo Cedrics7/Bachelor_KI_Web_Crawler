@@ -1,0 +1,42 @@
+/* =============================================================
+   theme-transition.css — Animierter Theme-Wechsel
+   Nutzt die View Transition API (Chrome 111+, Edge 111+).
+   Fallback: body transition in base.css greift für ältere Browser.
+   ============================================================= */
+
+/*
+   View Transition: sanftes Cross-Fade beim Theme-Wechsel.
+   Wird von theme.js via document.startViewTransition() ausgelöst.
+*/
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 0.35s;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    animation-fill-mode: both;
+}
+
+::view-transition-old(root) {
+    animation-name: theme-fade-out;
+}
+
+::view-transition-new(root) {
+    animation-name: theme-fade-in;
+}
+
+@keyframes theme-fade-out {
+    from { opacity: 1; filter: blur(0px); }
+    to   { opacity: 0; filter: blur(2px); }
+}
+
+@keyframes theme-fade-in {
+    from { opacity: 0; filter: blur(2px); }
+    to   { opacity: 1; filter: blur(0px); }
+}
+
+/* Reduced Motion: Transition deaktivieren */
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation: none;
+    }
+}

@@ -1,0 +1,368 @@
+/* =============================================================
+   components.css — UI-Komponenten
+   Inhaltsverzeichnis:
+   1. Telekom Accent Bar
+   2. Navigation + Theme-Toggle Icon
+   3. KPI Cards
+   4. Filter & Selects
+   5. Tabellen + External-Link Icon
+   6. Pagination
+   7. Monitoring
+   8. Modal
+   9. Status & Utility
+   10. Animationen
+   ============================================================= */
+
+
+/* -------------------------------------------------------------
+   1. TELEKOM ACCENT BAR
+   ------------------------------------------------------------- */
+.telekom-accent-bar {
+    height: 4px;
+    background-color: var(--telekom-color-primary-standard);
+}
+
+
+/* -------------------------------------------------------------
+   2. NAVIGATION + THEME-TOGGLE ICON
+   ------------------------------------------------------------- */
+.nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 2rem;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-radius: 0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.nav-left  { display: flex; align-items: center; gap: 2.5rem; }
+.nav-links { display: flex; gap: 2rem; }
+.nav-right { display: flex; align-items: center; gap: 1rem; }
+
+.nav-link {
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-bottom: 3px solid transparent;
+    padding: 0.625rem 0;
+    color: var(--dashboard-text);
+    transition:
+        color var(--dashboard-transition),
+        border-color var(--dashboard-transition);
+    user-select: none;
+}
+
+.nav-link:hover { color: var(--telekom-color-primary-standard); }
+
+.nav-link.active {
+    border-bottom-color: var(--telekom-color-primary-standard);
+    color: var(--telekom-color-primary-standard);
+}
+
+/*
+   Theme-Toggle Icon: dreht sich 180° in den Dark Mode.
+   Farbe explizit schwarz (light) / weiß (dark) — kein currentColor-Blau.
+   Scale-Ghost-Buttons würden currentColor bläulich rendern.
+*/
+#theme-icon {
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    color: #000000;          /* Light: schwarz */
+}
+
+html.dark #theme-icon {
+    transform: rotate(180deg);
+    color: #FFFFFF;          /* Dark: weiß */
+}
+
+html.light #theme-icon {
+    transform: rotate(0deg);
+    color: #000000;
+}
+
+
+/* -------------------------------------------------------------
+   3. KPI CARDS
+   ------------------------------------------------------------- */
+.scale-card {
+    background-color: var(--dashboard-bg-card);
+    color: var(--dashboard-text);
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    padding: 1.5rem;
+    transition:
+        background-color var(--dashboard-transition),
+        color var(--dashboard-transition);
+}
+
+.kpi-card                { border-left: 4px solid transparent; }
+.kpi-card--neutral       { border-left-color: #9E9E9E; }
+.kpi-card--success       { border-left-color: var(--telekom-color-success-standard, #28a745); }
+.kpi-card--primary       { border-left-color: var(--telekom-color-primary-standard); }
+
+.kpi-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 0.5rem;
+}
+
+.kpi-value               { font-size: 1.875rem; font-weight: 900; line-height: 1.1; }
+.kpi-value--success      { color: var(--telekom-color-success-standard, #28a745); }
+.kpi-value--primary      { color: var(--telekom-color-primary-standard); }
+
+
+/* -------------------------------------------------------------
+   4. FILTER & SELECTS
+   Native <select> vollständig thematisiert für Light/Dark.
+   ------------------------------------------------------------- */
+.filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.dashboard-select {
+    font-family: 'TeleNeo', 'TeleNeo Web', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 0.875rem;
+    min-height: 40px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid var(--dashboard-select-border);
+    background-color: var(--dashboard-select-bg);
+    color: var(--dashboard-select-text);
+    width: 100%;
+    cursor: pointer;
+    transition:
+        background-color var(--dashboard-transition),
+        color var(--dashboard-transition),
+        border-color var(--dashboard-transition),
+        box-shadow 0.15s ease;
+}
+
+.dashboard-select:focus {
+    outline: none;
+    border-color: var(--telekom-color-primary-standard);
+    box-shadow: 0 0 0 2px rgba(226, 0, 116, 0.2);
+}
+
+.dashboard-select option {
+    background-color: var(--dashboard-select-option-bg);
+    color: var(--dashboard-select-option-text);
+}
+
+
+/* -------------------------------------------------------------
+   5. TABELLEN + EXTERNAL-LINK ICON
+   ------------------------------------------------------------- */
+.table-wrapper { overflow-x: auto; }
+
+scale-table table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+scale-table td {
+    white-space: normal !important;
+    word-wrap: break-word;
+    padding: 16px 12px !important;
+    vertical-align: middle;
+}
+
+.col-massnahme { width: 40%; }
+
+.table-row {
+    transition: background-color 0.15s ease;
+}
+
+.table-row:hover {
+    background-color: rgba(226, 0, 116, 0.04);
+    cursor: pointer;
+}
+
+html.dark .table-row:hover {
+    background-color: rgba(226, 0, 116, 0.08);
+}
+
+/*
+   External-Link SVG-Icon: Farbe explizit schwarz/weiß.
+   Kein currentColor (würde bläulich erben von scale-button Ghost).
+   Transition sorgt für sanften Wechsel beim Theme-Umschalten.
+*/
+.icon-external {
+    stroke: #111111;
+    transition: stroke var(--dashboard-transition), opacity 0.15s ease;
+}
+
+.icon-external:hover { opacity: 0.7; }
+
+html.dark .icon-external { stroke: #EEEEEE; }
+
+
+/* -------------------------------------------------------------
+   6. PAGINATION
+   ------------------------------------------------------------- */
+.pagination-bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding: 1rem;
+}
+
+.pagination-info {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0 1rem;
+}
+
+
+/* -------------------------------------------------------------
+   7. MONITORING
+   ------------------------------------------------------------- */
+.monitoring-title   { margin-bottom: 1.5rem; }
+.monitoring-kpi     { padding: 1.5rem; }
+
+.monitoring-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin-top: 0.25rem;
+}
+
+.monitoring-status {
+    font-size: 1.125rem;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--telekom-color-info-standard, #0066cc);
+    margin-top: 0.25rem;
+}
+
+.monitoring-time {
+    font-size: 0.625rem;
+    opacity: 0.5;
+    margin-top: 0.5rem;
+    font-family: monospace;
+}
+
+/* Terminal-Panel — bewusst immer dunkel */
+.log-panel {
+    background-color: #111111;
+    border-radius: 4px;
+    height: 500px;
+    overflow-y: auto;
+    padding: 1rem;
+    font-family: monospace;
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #27272a;
+}
+
+.log-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #4ade80;
+    opacity: 0.4;
+    letter-spacing: 0.05em;
+}
+
+.log-indicator {
+    font-size: 0.625rem;
+    color: #16a34a;
+    animation: pulse 2s infinite;
+}
+
+.log-content {
+    white-space: pre-wrap;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: #86efac;
+}
+
+
+/* -------------------------------------------------------------
+   8. MODAL
+   ------------------------------------------------------------- */
+.modal-body {
+    padding: 1rem;
+    display: grid;
+    gap: 0.5rem;
+    border-radius: 4px;
+}
+
+html.light .modal-body { background-color: #F9F9F9; color: #111111; }
+html.dark  .modal-body { background-color: #111111; color: #FFFFFF; }
+
+.modal-row {
+    display: flex;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid;
+}
+
+html.light .modal-row { border-bottom-color: #E4E4E4; }
+html.dark  .modal-row { border-bottom-color: #2a2a2a; }
+
+.modal-key {
+    width: 33%;
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: #E20074;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-right: 0.5rem;
+    flex-shrink: 0;
+}
+
+.modal-val {
+    font-size: 0.875rem;
+    word-break: break-word;
+}
+
+
+/* -------------------------------------------------------------
+   9. STATUS & UTILITY
+   ------------------------------------------------------------- */
+.api-status {
+    display: flex;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background-color: #ccc;
+    flex-shrink: 0;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.dot-online  { background-color: #28a745; box-shadow: 0 0 8px rgba(40, 167, 69, 0.7); }
+.dot-offline { background-color: #dc3545; box-shadow: 0 0 8px rgba(220, 53, 69, 0.7); }
+
+
+/* -------------------------------------------------------------
+   10. ANIMATIONEN
+   ------------------------------------------------------------- */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+}
