@@ -1,4 +1,5 @@
         :root {
+            --telekom-font-family: 'TeleNeo', 'TeleNeo Web', 'Helvetica Neue', Helvetica, Arial, sans-serif;
             --bg-page: #F3F3F3;
             --bg-card: #FFFFFF;
             --text-main: #262626; /* Dunkelgrau für den Light Mode */
@@ -14,11 +15,17 @@
         }
 
                body {
+            font-family: var(--telekom-font-family);
             background-color: var(--bg-page);
             color: var(--text-main);
             transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
                 color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+    h1, h2, h3, scale-button, scale-text-field, button, input, select, textarea, .nav-link {
+    font-family: var(--telekom-font-family) !important;
+}
+
 
 /* Animation für das Icon-Element */
 scale-icon-action-light-dark-mode {
@@ -38,6 +45,46 @@ scale-icon-action-light-dark-mode:active {
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
             padding: 24px;
         }
+
+        /* Konsistente Tabellen-Layouts */
+scale-table table {
+    table-layout: fixed; /* Zwingt den Browser, die definierten Breiten einzuhalten */
+    width: 100%;
+}
+
+/* Spaltenbreiten definieren */
+/* ID Spalte */
+scale-table th:nth-child(1),
+scale-table td:nth-child(1) {
+    width: 80px;
+}
+
+/* Ort / Name Spalte (flexibel, aber mit Mindestbreite) */
+scale-table th:nth-child(2),
+scale-table td:nth-child(2) {
+    width: 25%;
+}
+
+/* Status / Kategorie Spalte */
+scale-table th:nth-child(3),
+scale-table td:nth-child(3) {
+    width: 15%;
+}
+
+/* Aktions-Spalte (Buttons immer ganz rechts und gleich breit) */
+scale-table th:last-child,
+scale-table td:last-child {
+    width: 120px;
+    text-align: right;
+}
+
+/* Zellen-Padding nach Scale Standard */
+scale-table td {
+    white-space: normal !important;
+    word-wrap: break-word;
+    padding: 16px 12px !important;
+    vertical-align: middle;
+}
 
         .nav-link {
             cursor: pointer;

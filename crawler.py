@@ -281,7 +281,6 @@ def analyze_with_gemini(gesammelter_text):
 
 
 # --- 5. MAIN LOOP ---
-# --- 5. MAIN LOOP ---
 def run_crawler():
     conn = get_db_connection()
     cursor = conn.cursor()
