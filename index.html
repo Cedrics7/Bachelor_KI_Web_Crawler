@@ -30,7 +30,6 @@
                 <span onclick="updateUrl('bestandsdaten')"  id="nav-bestandsdaten"  class="nav-link active">Bestandsdaten</span>
                 <span onclick="updateUrl('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link">Bewegungsdaten</span>
                 <span onclick="updateUrl('monitoring')"     id="nav-monitoring"     class="nav-link">Monitoring</span>
-                <span onclick="updateUrl('changelog')"      id="nav-changelog"      class="nav-link">Changelog</span>
             </div>
         </div>
         <div class="nav-right">
@@ -168,14 +167,23 @@
             onclick="updateUrl(null, {id: null})">Schließen</scale-button>
     </scale-modal>
 
-    <!-- FOOTER: Copyright links | Changelog + Seitenanfang rechts -->
+    <!-- FOOTER -->
     <footer class="dashboard-footer" id="main-footer">
         <span class="footer-copy">&copy; Deutsche Telekom AG</span>
         <div class="footer-right">
             <button class="footer-btn" id="btn-changelog" onclick="updateUrl('changelog')" aria-label="Versionsverlauf">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
                 Version <span id="footer-version">v—</span>
             </button>
             <button class="footer-btn" onclick="scrollToTop()" aria-label="Seitenanfang">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="18 15 12 9 6 15"/>
+                </svg>
                 Seitenanfang
             </button>
         </div>
