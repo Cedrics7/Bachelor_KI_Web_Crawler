@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="node_modules/@telekom/scale-components/dist/scale-components/scale-components.css" />
     <script type="module" src="node_modules/@telekom/scale-components/dist/scale-components/scale-components.esm.js"></script>
 
-    <!-- Dashboard Styles (aufgeteilt nach Verantwortung) -->
+    <!-- Dashboard Styles -->
     <link rel="stylesheet" href="css/tokens.css" />
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/components.css" />
@@ -18,48 +18,27 @@
     <link rel="stylesheet" href="css/theme-transition.css" />
 </head>
 
-<!--
-    Theme-System:
-    - html.light / html.dark  => CSS-Variablen-Kontext (tokens.css)
-    - body[data-mode]         => Scale-Komponenten-Kontext
-    - Scale Web Components    => erhalten mode-Prop per JS (theme.js)
--->
 <body data-mode="light">
 
-    <!-- Telekom Brand Accent Bar -->
     <div class="telekom-accent-bar"></div>
 
-    <!-- =========================================================
-         NAVIGATION
-    ========================================================= -->
+    <!-- NAVIGATION -->
     <nav class="scale-card nav-bar" id="main-nav">
         <div class="nav-left">
             <scale-logo variant="magenta" transparent="yes"></scale-logo>
             <div class="nav-links">
-                <span onclick="updateUrl('bestandsdaten')" id="nav-bestandsdaten" class="nav-link active">Bestandsdaten</span>
+                <span onclick="updateUrl('bestandsdaten')"  id="nav-bestandsdaten"  class="nav-link active">Bestandsdaten</span>
                 <span onclick="updateUrl('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link">Bewegungsdaten</span>
-                <span onclick="updateUrl('monitoring')"    id="nav-monitoring"     class="nav-link">Monitoring</span>
+                <span onclick="updateUrl('monitoring')"     id="nav-monitoring"     class="nav-link">Monitoring</span>
+                <span onclick="updateUrl('changelog')"      id="nav-changelog"      class="nav-link">Changelog</span>
             </div>
         </div>
         <div class="nav-right">
-            <!--
-                Scale-konform: scale-button als interaktiver Wrapper,
-                Icon innen mit decorative-Attribut (aria-label am Button).
-            -->
-            <scale-button
-                id="theme-toggle-btn"
-                variant="ghost"
-                icon-only
-                aria-label="Design umschalten"
-                onclick="toggleTheme()"
-                mode="light">
-                <scale-icon-action-light-dark-mode
-                    id="theme-icon"
-                    decorative
-                    mode="light">
+            <scale-button id="theme-toggle-btn" variant="ghost" icon-only
+                aria-label="Design umschalten" onclick="toggleTheme()" mode="light">
+                <scale-icon-action-light-dark-mode id="theme-icon" decorative mode="light">
                 </scale-icon-action-light-dark-mode>
             </scale-button>
-
             <div class="api-status" id="api-status-text">
                 <span class="status-dot dot-online" id="api-status-dot"></span>
                 <span id="api-status-label">API LIVE</span>
@@ -67,9 +46,7 @@
         </div>
     </nav>
 
-    <!-- =========================================================
-         MAIN CONTENT
-    ========================================================= -->
+    <!-- MAIN -->
     <main class="dashboard-main">
 
         <!-- KPI CARDS -->
@@ -88,9 +65,7 @@
             </div>
         </section>
 
-        <!-- =====================================================
-             SEITE: BESTANDSDATEN
-        ===================================================== -->
+        <!-- BESTANDSDATEN -->
         <div id="page-bestandsdaten" class="page-content">
             <div class="page-header">
                 <h1 class="page-title">Bestandsdaten</h1>
@@ -106,16 +81,7 @@
             <div class="scale-card table-wrapper">
                 <scale-table id="table-bestandsdaten-wrapper" mode="light">
                     <table class="w-full text-left">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Ort</th>
-                                <th>AGS</th>
-                                <th>BL</th>
-                                <th>Letzter Crawl</th>
-                                <th>Aktion</th>
-                            </tr>
-                        </thead>
+                        <thead><tr><th>ID</th><th>Ort</th><th>AGS</th><th>BL</th><th>Letzter Crawl</th><th>Aktion</th></tr></thead>
                         <tbody id="table-bestandsdaten"></tbody>
                     </table>
                 </scale-table>
@@ -123,20 +89,14 @@
             </div>
         </div>
 
-        <!-- =====================================================
-             SEITE: BEWEGUNGSDATEN
-        ===================================================== -->
+        <!-- BEWEGUNGSDATEN -->
         <div id="page-bewegungsdaten" class="page-content hidden">
             <div class="page-header page-header--stacked">
                 <h1 class="page-title">Bewegungsdaten</h1>
                 <div class="scale-card filter-grid">
                     <scale-text-field id="filter-beweg-suche" label="Stichwort..." mode="light"></scale-text-field>
-                    <select id="filter-beweg-bl"   class="dashboard-select" onchange="updateUrl(null, { bl: this.value })">
-                        <option value="Alle">Bundesland: Alle</option>
-                    </select>
-                    <select id="filter-beweg-kat"  class="dashboard-select" onchange="updateUrl(null, { kat: this.value })">
-                        <option value="Alle">Kategorie: Alle</option>
-                    </select>
+                    <select id="filter-beweg-bl"   class="dashboard-select" onchange="updateUrl(null, { bl: this.value })"><option value="Alle">Bundesland: Alle</option></select>
+                    <select id="filter-beweg-kat"  class="dashboard-select" onchange="updateUrl(null, { kat: this.value })"><option value="Alle">Kategorie: Alle</option></select>
                     <select id="filter-beweg-sort" class="dashboard-select" onchange="updateUrl(null, { sort: this.value })">
                         <option value="desc">Datum: Neueste zuerst</option>
                         <option value="asc">Datum: Älteste zuerst</option>
@@ -146,16 +106,14 @@
             <div class="scale-card table-wrapper">
                 <scale-table id="table-bewegungsdaten-wrapper" mode="light">
                     <table class="w-full text-left">
-                        <thead>
-                            <tr>
-                                <th class="col-massnahme">Maßnahme</th>
-                                <th>Ort / Bundesland</th>
-                                <th>Adresse</th>
-                                <th>Zeitraum</th>
-                                <th>Gefunden am</th>
-                                <th class="text-right">Quelle</th>
-                            </tr>
-                        </thead>
+                        <thead><tr>
+                            <th class="col-massnahme">Maßnahme</th>
+                            <th>Ort / Bundesland</th>
+                            <th>Adresse</th>
+                            <th>Zeitraum</th>
+                            <th>Gefunden am</th>
+                            <th class="text-right">Quelle</th>
+                        </tr></thead>
                         <tbody id="table-bewegungsdaten"></tbody>
                     </table>
                 </scale-table>
@@ -163,20 +121,12 @@
             </div>
         </div>
 
-        <!-- =====================================================
-             SEITE: MONITORING
-        ===================================================== -->
+        <!-- MONITORING -->
         <div id="page-monitoring" class="page-content hidden">
             <h1 class="page-title monitoring-title">Crawler Live-Monitoring</h1>
             <div class="monitoring-kpi-grid">
-                <div class="scale-card monitoring-kpi">
-                    <p class="kpi-label">Aktuelles Ziel</p>
-                    <h2 id="live-ort" class="monitoring-value">-</h2>
-                </div>
-                <div class="scale-card monitoring-kpi">
-                    <p class="kpi-label">Funde heute</p>
-                    <h2 id="live-funde" class="monitoring-value kpi-value--primary">0</h2>
-                </div>
+                <div class="scale-card monitoring-kpi"><p class="kpi-label">Aktuelles Ziel</p><h2 id="live-ort" class="monitoring-value">-</h2></div>
+                <div class="scale-card monitoring-kpi"><p class="kpi-label">Funde heute</p><h2 id="live-funde" class="monitoring-value kpi-value--primary">0</h2></div>
                 <div class="scale-card monitoring-kpi">
                     <p class="kpi-label">Status</p>
                     <h2 id="live-status" class="monitoring-status">Initialisierung...</h2>
@@ -192,64 +142,78 @@
             </div>
         </div>
 
+        <!-- CHANGELOG — renderChangelog() schreibt in #changelog-list -->
+        <div id="page-changelog" class="page-content hidden changelog-overlay">
+            <div class="changelog-inner">
+                <div class="changelog-header">
+                    <button class="changelog-back" onclick="history.back()" aria-label="Zurück">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                        Zurück
+                    </button>
+                    <h1 class="changelog-title">Versionsverlauf</h1>
+                </div>
+                <div id="changelog-list"></div>
+            </div>
+        </div>
+
     </main>
 
-    <!-- =========================================================
-         DETAIL MODAL
-         mode="light" initial — wird per applyTheme() aktualisiert
-    ========================================================= -->
+    <!-- MODAL -->
     <scale-modal id="detail-modal" heading="Details anzeigen" mode="light">
         <div id="modal-content"></div>
-        <scale-button slot="footer" variant="secondary" mode="light" onclick="updateUrl(null, {id: null})">Schließen</scale-button>
+        <scale-button slot="footer" variant="secondary" mode="light"
+            onclick="updateUrl(null, {id: null})">Schließen</scale-button>
     </scale-modal>
 
-
-    <!-- =========================================================
-         FOOTER
-    ========================================================= -->
+    <!-- FOOTER -->
     <footer class="dashboard-footer" id="main-footer">
-        <!-- Links: Copyright -->
-        <!-- Links: Copyright -->
-<span class="footer-copy">&#169; Deutsche Telekom AG</span>
-
-<!-- Rechts: Version + Seitenanfang -->
-<div class="footer-right">
-    <button class="footer-btn" id="btn-changelog" onclick="updateUrl('changelog')"
-            aria-label="Versionsverlauf anzeigen">
-        <scale-icon-action-list size="16" decorative="true"></scale-icon-action-list>
-        Version v1.3.0
-    </button>
-    <button class="footer-btn" onclick="scrollToTop()" aria-label="Zum Seitenanfang">
-        <scale-icon-navigation-collapse-up size="16" decorative="true"></scale-icon-navigation-collapse-up>
-        Seitenanfang
-    </button>
-</div>
+        <span class="footer-copy">&copy; Deutsche Telekom AG</span>
+        <div class="footer-right">
+            <button class="footer-btn" id="btn-changelog" onclick="updateUrl('changelog')" aria-label="Versionsverlauf">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+                Version <span id="footer-version">v—</span>
+            </button>
+            <a class="footer-btn footer-link" href="mailto:servicedesk@telekom.de" aria-label="Servicedesk">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                </svg>
+                Servicedesk
+            </a>
+            <a class="footer-btn footer-link" href="#" aria-label="Hilfe">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Hilfe
+            </a>
+            <a class="footer-btn footer-link" href="#" aria-label="Datenschutz">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                Datenschutz
+            </a>
+            <button class="footer-btn" onclick="scrollToTop()" aria-label="Seitenanfang">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="18 15 12 9 6 15"/>
+                </svg>
+                Seitenanfang
+            </button>
+        </div>
     </footer>
 
-    <!-- =========================================================
-         CHANGELOG-OVERLAY (eigene "Seite" via data-page)
-    ========================================================= -->
-    <div id="page-changelog" class="page-content hidden changelog-overlay">
-        <div class="changelog-inner">
-            <div class="changelog-header">
-                <button class="changelog-back" onclick="history.back()" aria-label="Zurück">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <polyline points="15 18 9 12 15 6"/>
-                    </svg>
-                    Zurück
-                </button>
-                <h1 class="changelog-title">Versionsverlauf</h1>
-            </div>
-       </div>
-    </div>
-    <script>
-        function scrollToTop() {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    </script>
-
-    <!-- JS Module — Reihenfolge: theme zuerst (kein Flash), dann router -->
+    <script>function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }</script>
     <script src="js/theme.js"></script>
     <script src="js/api.js"></script>
     <script src="js/render.js"></script>
