@@ -104,9 +104,13 @@
             <div class="scale-card overflow-x-auto">
                 <scale-table>
                     <table class="w-full text-left">
-                        <thead>
+                       <thead>
                             <tr>
-                                <th>Maßnahme</th><th>Ort / Bundesland</th><th>Adresse</th></th><th>Zeitraum</th><th>Gefunden am</th></th><th>Quelle</th>
+                                <th class="p-3 w-2/5">Maßnahme</th> <th class="p-3">Ort / Bundesland</th>
+                                <th class="p-3">Adresse</th>
+                                <th class="p-3">Zeitraum</th>
+                                <th class="p-3">Gefunden am</th>
+                                <th class="p-3 text-right">Quelle</th>
                             </tr>
                         </thead>
                         <tbody id="table-bewegungsdaten"></tbody>
@@ -125,7 +129,7 @@
             </div>
             <div class="scale-card text-green-400 font-mono text-sm h-[500px] overflow-y-auto" style="background-color: #111 !important;">
                 <div class="flex justify-between items-center mb-4 border-b border-zinc-800 pb-2">
-                    <span class="text-xs uppercase font-bold opacity-40">crawler_history.txt</span>
+                    <span class="text-xs uppercase font-bold opacity-40">crawler history</span>
                     <span class="text-[10px] text-green-600 animate-pulse">● Auto-Refresh active</span>
                 </div>
                 <pre id="monitoring-log" class="whitespace-pre-wrap text-xs leading-relaxed text-green-500"></pre>

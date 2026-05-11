@@ -186,7 +186,7 @@ function renderBewegTable(items) {
 
         return `
         <tr>
-            <td>
+            <td class="p-3">
                 <scale-tag mode="${mode}" variant="brand">${row.kategorie || 'BAU'}</scale-tag>
                 <br><strong>${row.massnahme}</strong>
             </td>
