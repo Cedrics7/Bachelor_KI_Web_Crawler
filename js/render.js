@@ -17,6 +17,20 @@ function externalLinkIcon() {
         </svg>`;
 }
 
+/* Zentrierte Quell-Zelle mit stopPropagation-Wrapper */
+function _srcCell(url, mode) {
+    return `
+        <td style="text-align:center;vertical-align:middle;width:48px">
+            <span onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;justify-content:center">
+                <scale-button variant="ghost" size="small"
+                    href="${esc(url)}" target="_blank"
+                    mode="${mode}" aria-label="Quelle öffnen">
+                    ${externalLinkIcon()}
+                </scale-button>
+            </span>
+        </td>`;
+}
+
 /* ----------------------------------------------------------
    Kategorie-Badge
 ---------------------------------------------------------- */
@@ -81,14 +95,7 @@ function renderBestandsTable(items) {
             <td>${esc(row.ags)}</td>
             <td>${esc(row.bundesland ?? '-')}</td>
             <td>${esc(row.last_scanned ?? '-')}</td>
-            <td>
-                <scale-button variant="ghost" size="small"
-                    href="${esc(row.url)}" target="_blank"
-                    mode="${mode}" aria-label="Quelle öffnen"
-                    onclick="event.stopPropagation()">
-                    ${externalLinkIcon()}
-                </scale-button>
-            </td>
+            ${_srcCell(row.url ?? '#', mode)}
         </tr>
     `).join('');
 }
@@ -119,14 +126,7 @@ function renderBewegTable(items) {
             <td>${esc(row.adresse ?? '-')}</td>
             <td>${_dateRange(row.massnahme_start, row.massnahme_ende)}</td>
             <td>${esc(row.gefunden_am ?? row.end_time ?? '-')}</td>
-            <td style="text-align:right">
-                <scale-button variant="ghost" size="small"
-                    href="${esc(row.massnahme_url ?? '#')}" target="_blank"
-                    mode="${mode}" aria-label="Quelle öffnen"
-                    onclick="event.stopPropagation()">
-                    ${externalLinkIcon()}
-                </scale-button>
-            </td>
+            ${_srcCell(row.massnahme_url ?? '#', mode)}
         </tr>
     `).join('');
 }
