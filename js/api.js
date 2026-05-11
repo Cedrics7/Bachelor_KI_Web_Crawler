@@ -78,6 +78,24 @@ async function fetchMonitoringData() {
 }
 
 /* ----------------------------------------------------------
+   GET /api/changelog
+   Response: {
+       versions: [
+           {
+               id, version, released_at, summary, is_current,
+               items: [ { tag, description }, … ]
+           }, …
+       ]
+   }
+   Versionen kommen bereits absteigend sortiert vom Backend.
+---------------------------------------------------------- */
+async function fetchChangelog() {
+    const res = await fetch(`${API_BASE}/api/changelog`);
+    if (!res.ok) throw new Error(`Changelog: HTTP ${res.status}`);
+    return res.json();   // { versions: [...] }
+}
+
+/* ----------------------------------------------------------
    Health-Check (kein dedizierter Endpoint in api.py —
    wir nutzen /api/stats als Proxy, timeout 3s)
 ---------------------------------------------------------- */

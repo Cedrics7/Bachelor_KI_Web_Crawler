@@ -209,6 +209,84 @@ function renderMonitoring(data) {
 }
 
 /* ----------------------------------------------------------
+   Changelog
+   api.py Response: { versions: [ { id, version, released_at,
+       summary, is_current, items: [{tag, description}] } ] }
+
+   Tag-Farben (Telekom-Palette):
+     feat     → Magenta  (#E20074)
+     fix      → Grün     (#00884A)
+     refactor → Blau     (#0064A3)
+     perf     → Lila     (#7D3F98)
+     style    → Türkis   (#009AA0)
+     chore    → Grau     (#727272)
+     docs     → Braun    (#8B5A00)
+---------------------------------------------------------- */
+const TAG_COLORS = {
+    feat:     { bg: '#E20074', fg: '#ffffff' },
+    fix:      { bg: '#00884A', fg: '#ffffff' },
+    refactor: { bg: '#0064A3', fg: '#ffffff' },
+    perf:     { bg: '#7D3F98', fg: '#ffffff' },
+    style:    { bg: '#009AA0', fg: '#ffffff' },
+    chore:    { bg: '#727272', fg: '#ffffff' },
+    docs:     { bg: '#8B5A00', fg: '#ffffff' },
+};
+
+function _tagBadge(tag) {
+    const color = TAG_COLORS[tag?.toLowerCase()] ?? { bg: '#727272', fg: '#ffffff' };
+    return `<span class="changelog-tag" style="background:${color.bg};color:${color.fg}">${esc(tag ?? 'other')}</span>`;
+}
+
+function renderChangelog(data) {
+    const container = document.getElementById('changelog-list');
+    if (!container) return;
+
+    const versions = data?.versions ?? [];
+
+    if (versions.length === 0) {
+        container.innerHTML = `<p class="changelog-empty">Keine Versionen gefunden.</p>`;
+        return;
+    }
+
+    container.innerHTML = versions.map((v) => {
+        const isCurrent = v.is_current;
+        const items     = v.items ?? [];
+
+        const itemsHtml = items.length > 0
+            ? `<ul class="changelog-items">
+                 ${items.map((it) => `
+                   <li class="changelog-item">
+                       ${_tagBadge(it.tag)}
+                       <span class="changelog-item-text">${esc(it.description)}</span>
+                   </li>`).join('')}
+               </ul>`
+            : `<p class="changelog-no-items">Keine Einträge.</p>`;
+
+        return `
+        <article class="changelog-card${isCurrent ? ' changelog-card--current' : ''}">
+            <header class="changelog-card-header">
+                <div class="changelog-version-row">
+                    <span class="changelog-version">v${esc(v.version)}</span>
+                    ${isCurrent ? '<span class="changelog-badge-current">Aktuell</span>' : ''}
+                </div>
+                <div class="changelog-meta">
+                    <span class="changelog-date">${esc(v.released_at ?? '')}</span>
+                    ${v.summary ? `<span class="changelog-summary">${esc(v.summary)}</span>` : ''}
+                </div>
+            </header>
+            ${itemsHtml}
+        </article>`;
+    }).join('');
+
+    /* Footer-Version dynamisch setzen */
+    const currentVersion = versions.find((v) => v.is_current) ?? versions[0];
+    if (currentVersion) {
+        const footerEl = document.getElementById('footer-version');
+        if (footerEl) footerEl.textContent = `v${currentVersion.version}`;
+    }
+}
+
+/* ----------------------------------------------------------
    API-Status
 ---------------------------------------------------------- */
 function renderApiStatus(online) {

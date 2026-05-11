@@ -83,8 +83,11 @@ async function render() {
         _stopMonitoringRefresh();
     }
 
-    /* Changelog: nur anzeigen, kein Datenfetch nötig */
-    if (state.page === 'changelog') return;
+    /* Changelog: Daten aus DB laden */
+    if (state.page === 'changelog') {
+        await loadChangelog();
+        return;
+    }
 
     _syncFilters(state);
 
@@ -150,6 +153,22 @@ async function loadMonitoring() {
     } catch (err) {
         console.error('Monitoring:', err);
         renderMonitoring({ live: {}, history: `Fehler beim Laden: ${err.message}` });
+    }
+}
+
+/* ----------------------------------------------------------
+   Changelog laden — aus /api/changelog (DB)
+---------------------------------------------------------- */
+async function loadChangelog() {
+    try {
+        const data = await fetchChangelog();
+        renderChangelog(data);
+    } catch (err) {
+        console.error('Changelog:', err);
+        const container = document.getElementById('changelog-list');
+        if (container) {
+            container.innerHTML = `<p class="changelog-empty" style="color:#E20074">Fehler beim Laden des Changelogs: ${err.message}</p>`;
+        }
     }
 }
 
@@ -237,10 +256,22 @@ function _onSearchInput(id, key) {
 
 /* ----------------------------------------------------------
    Initialisierung
+   Beim ersten Load: Changelog vorausladen für Footer-Version.
 ---------------------------------------------------------- */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     _onSearchInput('filter-bestandsdaten-suche', 'search');
     _onSearchInput('filter-beweg-suche',         'search');
+
+    /* Footer-Version aus DB laden, unabhängig von aktiver Seite */
+    try {
+        const clData = await fetchChangelog();
+        const versions = clData?.versions ?? [];
+        const current  = versions.find((v) => v.is_current) ?? versions[0];
+        if (current) {
+            const el = document.getElementById('footer-version');
+            if (el) el.textContent = `v${current.version}`;
+        }
+    } catch { /* Footer-Version bleibt statisch wenn API nicht erreichbar */ }
 
     render();
 
