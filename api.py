@@ -60,7 +60,8 @@ def get_bewegungsdaten(
         page_size: int = Query(50, ge=1, le=500),
         search: str = Query(None),
         bundesland: str = Query("Alle"),
-        kategorie: str = Query("Alle")
+        kategorie: str = Query("Alle"),
+        sort: str = Query("desc")  # Neuer Parameter für die Sortierrichtung
 ):
     try:
         conn = get_db_connection()
@@ -85,14 +86,18 @@ def get_bewegungsdaten(
 
         where_clause = " WHERE " + " AND ".join(where_conditions)
 
-        # 1. Daten abrufen
+        # Validierung der Sortierrichtung gegen SQL-Injection
+        order_direction = "ASC" if sort.lower() == "asc" else "DESC"
+
+        # 1. Daten abrufen (inklusive dynamischer Sortierung)
+        # Hinweis: Wir nutzen r.end_time für die Sortierung, da dies der technische Zeitstempel ist
         query = f"""
             SELECT r.massnahme, r.adresse, t.ort, r.massnahme_start, r.massnahme_ende, 
-                   r.massnahme_url, t.bundesland, r.kategorie 
+                   r.massnahme_url, t.bundesland, r.kategorie, r.end_time
             FROM crawl_results r 
             LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text 
             {where_clause}
-            ORDER BY r.end_time DESC 
+            ORDER BY r.end_time {order_direction} 
             LIMIT %s OFFSET %s
         """
         df = pd.read_sql(query, conn, params=params + [page_size, offset])
@@ -104,7 +109,7 @@ def get_bewegungsdaten(
         cur.execute(count_query, params)
         total_count = cur.fetchone()[0]
 
-        # 3. Filter-Optionen für die Dropdowns (einmalig oder bei Bedarf abrufen)
+        # 3. Filter-Optionen für die Dropdowns
         cur.execute("SELECT DISTINCT bundesland FROM crawl_targets WHERE bundesland IS NOT NULL ORDER BY bundesland")
         bl_list = [r[0] for r in cur.fetchall()]
         cur.execute("SELECT DISTINCT kategorie FROM crawl_results WHERE kategorie IS NOT NULL ORDER BY kategorie")

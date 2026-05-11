@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 # =====================================================================
 CONFIG = {
     "max_log_lines": 200,
-    "max_targets": 3,
+    "max_targets": 4,
     "max_subpages": 50,
     "max_pdf_pages": 5,
     "timeout_seconds": 10,
@@ -135,15 +135,34 @@ def write_history_log(event_type, message):
 
 
 def update_live_log(ort, status, funde=0, gespart=False):
+    status_file = "crawler_live_status.json"
+    heute_str = datetime.now().strftime("%Y-%m-%d")
+    gesamt_funde_heute = funde
+
+    # 1. Bestehende Daten laden, um den Tageszähler zu erhalten
+    if os.path.exists(status_file):
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                old_data = json.load(f)
+                # Prüfen, ob das letzte Update von heute war
+                last_update = old_data.get("timestamp", "")
+                if last_update.startswith(heute_str):
+                    # Nur die neuen Funde auf den Tageswert addieren
+                    gesamt_funde_heute += old_data.get("letzte_funde", 0)
+        except Exception as e:
+            print(f"Fehler beim Lesen des Status-Files: {e}")
+
+    # 2. Neuen Status schreiben
     log_data = {
-        "timestamp": datetime.now().strftime("%H:%M:%S"),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "aktueller_ort": ort,
         "status": status,
-        "letzte_funde": funde,
+        "letzte_funde": gesamt_funde_heute, # Hier steht nun die Tagessumme
         "hash_match": gespart
     }
-    with open("crawler_live_status.json", "w", encoding="utf-8") as f:
-        json.dump(log_data, f, ensure_ascii=False, indent=2)
+
+    with open(status_file, "w", encoding="utf-8") as f:
+        json.dump(log_data, f, ensure_ascii=False, indent=4)
 
 def extract_pdf_text(url, max_pages):
     try:
@@ -342,10 +361,10 @@ def run_crawler():
 
                 valid_count += 1
                 cursor.execute("""
-                    INSERT INTO crawl_results (ags, start_time, end_time, status, massnahme, adresse, massnahme_start, massnahme_ende, massnahme_url, content_hash)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (ags, start_time, datetime.now(), "Erfolgreich",
-                      f"[{item.get('kategorie')}] {item.get('massnahme')}",
+                    INSERT INTO crawl_results (ags,gefunden_am, start_time, end_time, status, kategorie, massnahme, adresse, massnahme_start, massnahme_ende, massnahme_url, content_hash)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (ags, datetime.now().strftime("%x"), start_time, datetime.now(), "Erfolgreich",
+                      item.get('kategorie'), item.get('massnahme'),
                       item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende"),
                       item.get("quelle_url"), content_hash))
 

@@ -153,6 +153,7 @@ async function loadBewegungsdaten(page = 1) {
     const searchVal = document.getElementById('filter-beweg-suche').value || "";
     const blVal = document.getElementById('filter-beweg-bl').value || "Alle";
     const katVal = document.getElementById('filter-beweg-kat').value || "Alle";
+    const sortVal = document.getElementById('filter-beweg-sort').value || "desc";
 
     try {
         const params = new URLSearchParams({
@@ -160,19 +161,23 @@ async function loadBewegungsdaten(page = 1) {
             page_size: pageSize,
             search: searchVal,
             bundesland: blVal,
-            kategorie: katVal
+            kategorie: katVal,
+            sort: sortVal
         });
 
         const res = await fetch(`${API_BASE}/bewegungsdaten?${params}`);
         const data = await res.json();
 
         if (data.filter_options) updateBewegDropdowns(data.filter_options);
-        renderBewegTable(data.items);
-        renderPagination('pagination-controls-beweg', data.total_pages, data.page, 'loadBewegungsdaten');
-        setApiStatus(true);
-    } catch (e) { setApiStatus(false); }
-}
 
+            renderBewegTable(data.items);
+            renderPagination('pagination-controls-beweg', data.total_pages, data.page, 'loadBewegungsdaten');
+            setApiStatus(true);
+        } catch (e) {
+            console.error(e);
+            setApiStatus(false);
+        }
+}
 function renderBewegTable(items) {
     const mode = document.body.getAttribute('data-mode') || 'light';
     const tbody = document.getElementById('table-bewegungsdaten');

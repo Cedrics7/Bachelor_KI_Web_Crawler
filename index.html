@@ -95,7 +95,10 @@
                     <scale-text-field id="filter-beweg-suche" label="Stichwort..."></scale-text-field>
                     <select id="filter-beweg-bl" class="p-2 border rounded" onchange="filterBewegungsdaten()"><option value="Alle">Bundesland: Alle</option></select>
                     <select id="filter-beweg-kat" class="p-2 border rounded" onchange="filterBewegungsdaten()"><option value="Alle">Kategorie: Alle</option></select>
-                    <scale-text-field type="date" id="filter-beweg-datum" label="Datum"></scale-text-field>
+                    <select id="filter-beweg-sort" class="p-2 border rounded" onchange="loadBewegungsdaten(1)">
+                        <option value="desc">Datum: Neueste zuerst</option>
+                        <option value="asc">Datum: Älteste zuerst</option>
+                    </select>
                 </div>
             </div>
             <div class="scale-card overflow-x-auto">
