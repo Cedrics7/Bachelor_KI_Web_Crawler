@@ -205,11 +205,14 @@ def get_changelog():
     """
     Liefert den vollständigen Versionsverlauf aus der Datenbank.
 
-    Tabellen-Schema (migration_changelog.sql):
-      changelog       : id, version, release_date, is_current
-      changelog_items : id, changelog_id, tag, description
+    Echtes Schema (migration_changelog.sql):
+      changelog       : id, version, release_date, title, description, commit_sha, created_at
+      changelog_items : id, changelog_id, type, scope, message, commit_sha, sort_order
 
-    Der Alias released_at wird für Frontend-Kompatibilität beibehalten.
+    Aliasse für Frontend-Kompatibilität:
+      release_date  -> released_at
+      type          -> tag
+      message       -> description
     """
     try:
         conn = get_db_connection(as_dict=True)
@@ -219,17 +222,21 @@ def get_changelog():
             SELECT
                 c.id,
                 c.version,
-                c.release_date  AS released_at,
-                c.is_current,
+                c.release_date   AS released_at,
+                c.title          AS summary,
+                c.description,
+                c.commit_sha,
                 json_agg(
                     json_build_object(
-                        'tag',         ci.tag,
-                        'description', ci.description
+                        'tag',         ci.type,
+                        'scope',       ci.scope,
+                        'description', ci.message
                     )
+                    ORDER BY ci.sort_order
                 ) FILTER (WHERE ci.id IS NOT NULL) AS items
             FROM changelog c
             LEFT JOIN changelog_items ci ON ci.changelog_id = c.id
-            GROUP BY c.id, c.version, c.release_date, c.is_current
+            GROUP BY c.id, c.version, c.release_date, c.title, c.description, c.commit_sha
             ORDER BY c.release_date DESC, c.version DESC
         """)
         rows = cur.fetchall()
