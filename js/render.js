@@ -1,16 +1,9 @@
 /* =============================================================
    render.js — DOM-Render-Funktionen
-   Feldnamen entsprechen der api.py-Response-Struktur.
    ============================================================= */
 
 'use strict';
 
-/* ----------------------------------------------------------
-   SVG External-Link Icon
-   Bewusst KEIN currentColor — stattdessen schwarz/weiß je Mode,
-   weil Scale-Icon-Buttons in Ghost-Variant sonst bläulich wirken.
-   Farbe wird via CSS-Klasse gesteuert: .icon-external
----------------------------------------------------------- */
 function externalLinkIcon() {
     return `
         <svg class="icon-external"
@@ -25,8 +18,24 @@ function externalLinkIcon() {
 }
 
 /* ----------------------------------------------------------
-   KPI-Cards — animierte Zahlen
-   api.py → /api/stats: { total, done, pending }
+   Kategorie-Badge
+---------------------------------------------------------- */
+const KAT_COLORS = {
+    'Sanierung':      { bg: '#E20074', fg: '#fff' },
+    'Neubau':         { bg: '#0064A3', fg: '#fff' },
+    'Privatisierung': { bg: '#7D3F98', fg: '#fff' },
+    'Tiefbau':        { bg: '#00884A', fg: '#fff' },
+};
+
+function _katBadge(kat) {
+    const c = KAT_COLORS[kat] ?? { bg: '#727272', fg: '#fff' };
+    return `<span style="display:inline-block;font-size:0.6rem;font-weight:700;text-transform:uppercase;
+        letter-spacing:0.05em;padding:0.15rem 0.5rem;border-radius:3px;
+        background:${c.bg};color:${c.fg};white-space:nowrap;">${esc(kat ?? '-')}</span>`;
+}
+
+/* ----------------------------------------------------------
+   KPI-Cards
 ---------------------------------------------------------- */
 function renderKPIs(total, done, pending) {
     _animateNumber('kpi-total',   total);
@@ -47,15 +56,13 @@ function _animateNumber(id, target) {
     requestAnimationFrame(function step(ts) {
         const progress = Math.min((ts - startTs) / duration, 1);
         const eased    = 1 - Math.pow(1 - progress, 3);
-        el.textContent = Math.round(start + (target - start) * eased)
-                           .toLocaleString('de-DE');
+        el.textContent = Math.round(start + (target - start) * eased).toLocaleString('de-DE');
         if (progress < 1) requestAnimationFrame(step);
     });
 }
 
 /* ----------------------------------------------------------
    Bestandsdaten-Tabelle
-   api.py Response-Felder: id, ort, ags, bundesland, last_scanned, url
 ---------------------------------------------------------- */
 function renderBestandsTable(items) {
     const mode  = _mode();
@@ -68,20 +75,17 @@ function renderBestandsTable(items) {
     }
 
     tbody.innerHTML = items.map((row) => `
-        <tr class="table-row" onclick="updateUrl(null, { id: ${row.id} })">
+        <tr class="table-row" onclick="updateUrl(null, { id: ${row.id}, idtype: 'bestand' })">
             <td>${row.id}</td>
             <td>${esc(row.ort)}</td>
             <td>${esc(row.ags)}</td>
             <td>${esc(row.bundesland ?? '-')}</td>
             <td>${esc(row.last_scanned ?? '-')}</td>
             <td>
-                <scale-button
-                    variant="ghost"
-                    size="small"
-                    href="${esc(row.url)}"
-                    target="_blank"
-                    mode="${mode}"
-                    aria-label="Quelle öffnen">
+                <scale-button variant="ghost" size="small"
+                    href="${esc(row.url)}" target="_blank"
+                    mode="${mode}" aria-label="Quelle öffnen"
+                    onclick="event.stopPropagation()">
                     ${externalLinkIcon()}
                 </scale-button>
             </td>
@@ -90,10 +94,7 @@ function renderBestandsTable(items) {
 }
 
 /* ----------------------------------------------------------
-   Bewegungsdaten-Tabelle
-   api.py Response-Felder:
-     massnahme, adresse, ort, massnahme_start, massnahme_ende,
-     massnahme_url, bundesland, kategorie, end_time, gefunden_am
+   Bewegungsdaten-Tabelle — mit Kategorie-Badge + Modal
 ---------------------------------------------------------- */
 function renderBewegTable(items) {
     const mode  = _mode();
@@ -106,8 +107,11 @@ function renderBewegTable(items) {
     }
 
     tbody.innerHTML = items.map((row) => `
-        <tr class="table-row">
-            <td class="col-massnahme">${esc(row.massnahme)}</td>
+        <tr class="table-row" onclick="updateUrl(null, { id: ${row.id}, idtype: 'bewegung' })">
+            <td class="col-massnahme">
+                ${_katBadge(row.kategorie)}
+                <div style="margin-top:0.3rem">${esc(row.massnahme)}</div>
+            </td>
             <td>
                 ${esc(row.ort)}
                 <br><small style="opacity:0.55">${esc(row.bundesland ?? '')}</small>
@@ -116,13 +120,10 @@ function renderBewegTable(items) {
             <td>${_dateRange(row.massnahme_start, row.massnahme_ende)}</td>
             <td>${esc(row.gefunden_am ?? row.end_time ?? '-')}</td>
             <td style="text-align:right">
-                <scale-button
-                    variant="ghost"
-                    size="small"
-                    href="${esc(row.massnahme_url ?? '#')}"
-                    target="_blank"
-                    mode="${mode}"
-                    aria-label="Quelle öffnen">
+                <scale-button variant="ghost" size="small"
+                    href="${esc(row.massnahme_url ?? '#')}" target="_blank"
+                    mode="${mode}" aria-label="Quelle öffnen"
+                    onclick="event.stopPropagation()">
                     ${externalLinkIcon()}
                 </scale-button>
             </td>
@@ -137,7 +138,6 @@ function renderPagination(containerId, currentPage, totalPages, onPageChange) {
     const container = document.getElementById(containerId);
     if (!container) return;
     const mode = _mode();
-
     container.innerHTML = `
         <scale-button variant="secondary" size="small" mode="${mode}"
             ${currentPage <= 1 ? 'disabled' : ''}
@@ -153,8 +153,7 @@ function renderPagination(containerId, currentPage, totalPages, onPageChange) {
 }
 
 /* ----------------------------------------------------------
-   Detail-Modal
-   Feldnamen: id, ort, ags, bundesland, last_scanned, url
+   Modal — Bestandsdaten
 ---------------------------------------------------------- */
 function renderModal(row) {
     const content = document.getElementById('modal-content');
@@ -171,14 +170,11 @@ function renderModal(row) {
             : '-'],
     ];
 
-    content.innerHTML = `
-        <div class="modal-body">
-            ${fields.map(([k, v]) => `
-                <div class="modal-row">
-                    <span class="modal-key">${k}</span>
-                    <span class="modal-val">${v ?? '-'}</span>
-                </div>`).join('')}
-        </div>`;
+    content.innerHTML = `<div class="modal-body">${fields.map(([k, v]) => `
+        <div class="modal-row">
+            <span class="modal-key">${k}</span>
+            <span class="modal-val">${v ?? '-'}</span>
+        </div>`).join('')}</div>`;
 
     const modal = document.getElementById('detail-modal');
     if (modal) {
@@ -188,10 +184,40 @@ function renderModal(row) {
 }
 
 /* ----------------------------------------------------------
+   Modal — Bewegungsdaten
+---------------------------------------------------------- */
+function renderModalBewegung(row) {
+    const content = document.getElementById('modal-content');
+    if (!content) return;
+
+    const fields = [
+        ['Kategorie',   _katBadge(row.kategorie)],
+        ['Maßnahme',   row.massnahme],
+        ['Adresse',     row.adresse ?? '-'],
+        ['Ort',         row.ort],
+        ['Bundesland',  row.bundesland ?? '-'],
+        ['Zeitraum',    _dateRange(row.massnahme_start, row.massnahme_ende)],
+        ['Gefunden am', row.gefunden_am ?? row.end_time ?? '-'],
+        ['Quelle', row.massnahme_url
+            ? `<a href="${esc(row.massnahme_url)}" target="_blank" rel="noopener noreferrer">${esc(row.massnahme_url)}</a>`
+            : '-'],
+    ];
+
+    content.innerHTML = `<div class="modal-body">${fields.map(([k, v]) => `
+        <div class="modal-row">
+            <span class="modal-key">${k}</span>
+            <span class="modal-val">${v ?? '-'}</span>
+        </div>`).join('')}</div>`;
+
+    const modal = document.getElementById('detail-modal');
+    if (modal) {
+        modal.heading = `${esc(row.kategorie ?? 'Maßnahme')}: ${esc(row.ort)}`;
+        modal.setAttribute('opened', '');
+    }
+}
+
+/* ----------------------------------------------------------
    Monitoring
-   api.py Response:
-     live: { aktueller_ort, status, letzte_funde, timestamp }
-     history: "<log-text>"
 ---------------------------------------------------------- */
 function renderMonitoring(data) {
     const live = data.live ?? {};
@@ -210,17 +236,6 @@ function renderMonitoring(data) {
 
 /* ----------------------------------------------------------
    Changelog
-   api.py Response: { versions: [ { id, version, released_at,
-       summary, is_current, items: [{tag, description}] } ] }
-
-   Tag-Farben (Telekom-Palette):
-     feat     → Magenta  (#E20074)
-     fix      → Grün     (#00884A)
-     refactor → Blau     (#0064A3)
-     perf     → Lila     (#7D3F98)
-     style    → Türkis   (#009AA0)
-     chore    → Grau     (#727272)
-     docs     → Braun    (#8B5A00)
 ---------------------------------------------------------- */
 const TAG_COLORS = {
     feat:     { bg: '#E20074', fg: '#ffffff' },
@@ -242,7 +257,6 @@ function renderChangelog(data) {
     if (!container) return;
 
     const versions = data?.versions ?? [];
-
     if (versions.length === 0) {
         container.innerHTML = `<p class="changelog-empty">Keine Versionen gefunden.</p>`;
         return;
@@ -251,15 +265,12 @@ function renderChangelog(data) {
     container.innerHTML = versions.map((v) => {
         const isCurrent = v.is_current;
         const items     = v.items ?? [];
-
         const itemsHtml = items.length > 0
-            ? `<ul class="changelog-items">
-                 ${items.map((it) => `
-                   <li class="changelog-item">
-                       ${_tagBadge(it.tag)}
-                       <span class="changelog-item-text">${esc(it.description)}</span>
-                   </li>`).join('')}
-               </ul>`
+            ? `<ul class="changelog-items">${items.map((it) => `
+                <li class="changelog-item">
+                    ${_tagBadge(it.tag)}
+                    <span class="changelog-item-text">${esc(it.description)}</span>
+                </li>`).join('')}</ul>`
             : `<p class="changelog-no-items">Keine Einträge.</p>`;
 
         return `
@@ -278,7 +289,6 @@ function renderChangelog(data) {
         </article>`;
     }).join('');
 
-    /* Footer-Version dynamisch setzen */
     const currentVersion = versions.find((v) => v.is_current) ?? versions[0];
     if (currentVersion) {
         const footerEl = document.getElementById('footer-version');
