@@ -18,13 +18,18 @@ def import_municipalities():
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # Fehlerhaften Header-Eintrag aus vorherigem Import löschen
+    cursor.execute("DELETE FROM crawl_targets WHERE ags = 'AGS'")
+    conn.commit()
+
     inserted = 0
     skipped = 0
     errors = 0
 
     with open(CSV_FILE, encoding="utf-8") as f:
         reader = csv.reader(f, delimiter=";")
-        for i, row in enumerate(reader, start=1):
+        next(reader)  # Header-Zeile überspringen
+        for i, row in enumerate(reader, start=2):
             if len(row) < 7:
                 print(f"  Zeile {i} übersprungen (zu wenig Spalten): {row}")
                 skipped += 1
