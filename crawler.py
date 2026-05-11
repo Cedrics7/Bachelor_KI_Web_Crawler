@@ -25,6 +25,7 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 # --- 1. CRAWLER KONFIGURATION ---
 # =====================================================================
 CONFIG = {
+    "heartbeat": 10,
     "max_log_lines": 200,
     "max_targets": 4,
     "max_subpages": 50,
@@ -179,7 +180,7 @@ def _heartbeat_worker():
                     json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception:
             pass
-        _heartbeat_stop.wait(30)
+        _heartbeat_stop.wait(CONFIG["heartbeat"])
 
 
 def extract_pdf_text(url, max_pages):

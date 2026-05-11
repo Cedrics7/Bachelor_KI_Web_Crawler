@@ -192,6 +192,12 @@ function _syncScaleModes() {
 /* Browser-Back/Forward */
 window.addEventListener('popstate', render);
 
+document.addEventListener('scale-close', (e) => {
+    if (e.target?.id === 'detail-modal') {
+        updateUrl(null, { id: null });
+    }
+});
+
 /* Search-Debounce */
 let _searchTimer = null;
 function _onSearchInput(id, key) {
