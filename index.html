@@ -39,13 +39,10 @@
                 <span onclick="updateUrl('bestandsdaten')" id="nav-bestandsdaten" class="nav-link active">Bestandsdaten</span>
                 <span onclick="updateUrl('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link">Bewegungsdaten</span>
                 <span onclick="updateUrl('monitoring')"    id="nav-monitoring"     class="nav-link">Monitoring</span>
+                <span onclick="updateUrl('changelog')"     id="nav-changelog"      class="nav-link">Changelog</span>
             </div>
         </div>
         <div class="nav-right">
-            <!--
-                Scale-konform: scale-button als interaktiver Wrapper,
-                Icon innen mit decorative-Attribut (aria-label am Button).
-            -->
             <scale-button
                 id="theme-toggle-btn"
                 variant="ghost"
@@ -192,119 +189,111 @@
             </div>
         </div>
 
+        <!-- =====================================================
+             SEITE: CHANGELOG (aus Datenbank via /api/changelog)
+        ===================================================== -->
+        <div id="page-changelog" class="page-content hidden changelog-overlay">
+            <div class="changelog-inner">
+                <div class="changelog-header">
+                    <button class="changelog-back" onclick="history.back()" aria-label="Zurück">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                        Zurück
+                    </button>
+                    <h1 class="changelog-title">Versionsverlauf</h1>
+                </div>
+                <!-- renderChangelog() schreibt hier rein -->
+                <div id="changelog-list"></div>
+            </div>
+        </div>
+
     </main>
 
     <!-- =========================================================
          DETAIL MODAL
-         mode="light" initial — wird per applyTheme() aktualisiert
     ========================================================= -->
     <scale-modal id="detail-modal" heading="Details anzeigen" mode="light">
         <div id="modal-content"></div>
         <scale-button slot="footer" variant="secondary" mode="light" onclick="updateUrl(null, {id: null})">Schließen</scale-button>
     </scale-modal>
 
-
     <!-- =========================================================
          FOOTER
+         Referenz: Telekom-Footer (einzeilig, schlank)
+         Links:  © Deutsche Telekom AG
+         Rechts: Version | Servicedesk | Hilfe | Datenschutz | ↑ Seitenanfang
     ========================================================= -->
     <footer class="dashboard-footer" id="main-footer">
-        <!-- Links: Copyright -->
-        <!-- Links: Copyright -->
-<span class="footer-copy">&#169; Deutsche Telekom AG</span>
 
-<!-- Rechts: Version + Seitenanfang -->
-<div class="footer-right">
-    <button class="footer-btn" id="btn-changelog" onclick="updateUrl('changelog')"
-            aria-label="Versionsverlauf anzeigen">
-        <scale-icon-action-list size="16" decorative="true"></scale-icon-action-list>
-        Version v1.3.0
-    </button>
-    <button class="footer-btn" onclick="scrollToTop()" aria-label="Zum Seitenanfang">
-        <scale-icon-navigation-collapse-up size="16" decorative="true"></scale-icon-navigation-collapse-up>
-        Seitenanfang
-    </button>
-</div>
-    </footer>
+        <span class="footer-copy">&copy; Deutsche Telekom AG</span>
 
-    <!-- =========================================================
-         CHANGELOG-OVERLAY (eigene "Seite" via data-page)
-    ========================================================= -->
-    <div id="page-changelog" class="page-content hidden changelog-overlay">
-        <div class="changelog-inner">
-            <div class="changelog-header">
-                <button class="changelog-back" onclick="history.back()" aria-label="Zurück">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <polyline points="15 18 9 12 15 6"/>
-                    </svg>
-                    Zurück
-                </button>
-                <h1 class="changelog-title">Versionsverlauf</h1>
-            </div>
+        <div class="footer-right">
 
-            <div class="changelog-list">
+            <!-- Version — wird per JS auf aktuelle DB-Version gesetzt -->
+            <button class="footer-btn" id="btn-changelog" onclick="updateUrl('changelog')"
+                    aria-label="Versionsverlauf anzeigen">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+                Version <span id="footer-version">v—</span>
+            </button>
 
-                <div class="changelog-entry changelog-entry--current">
-                    <div class="changelog-meta">
-                        <span class="changelog-version">v1.3.0</span>
-                        <span class="changelog-date">11.05.2026</span>
-                        <span class="changelog-badge">Aktuell</span>
-                    </div>
-                    <ul class="changelog-items">
-                        <li><span class="cl-tag cl-tag--fix">Fix</span> Heartbeat-Thread: <code>crawler_live_status.json</code> wird alle 30&nbsp;s aktualisiert</li>
-                        <li><span class="cl-tag cl-tag--fix">Fix</span> Monitoring-Refresh: dedizierter Start/Stop-Mechanismus beim Navigieren</li>
-                        <li><span class="cl-tag cl-tag--fix">Fix</span> Modal-Close: <code>scale-close</code>-Event entfernt <code>?id=</code> korrekt aus URL</li>
-                        <li><span class="cl-tag cl-tag--fix">Fix</span> Timestamp-Format ISO&nbsp;8601 (T-Separator) für browserübergreifende Kompatibilität</li>
-                        <li><span class="cl-tag cl-tag--new">Neu</span> Footer mit Copyright, Versions-Button und Seitenanfang-Button</li>
-                        <li><span class="cl-tag cl-tag--new">Neu</span> Versionsverlauf-Seite</li>
-                    </ul>
-                </div>
+            <!-- Servicedesk -->
+            <a class="footer-btn footer-link"
+               href="mailto:servicedesk@telekom.de"
+               aria-label="Servicedesk kontaktieren">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                </svg>
+                Servicedesk
+            </a>
 
-                <div class="changelog-entry">
-                    <div class="changelog-meta">
-                        <span class="changelog-version">v1.2.0</span>
-                        <span class="changelog-date">11.05.2026</span>
-                    </div>
-                    <ul class="changelog-items">
-                        <li><span class="cl-tag cl-tag--fix">Fix</span> API-Pfade korrigiert (<code>/api/</code>-Prefix)</li>
-                        <li><span class="cl-tag cl-tag--fix">Fix</span> Monitoring-Felder korrekt auf <code>api.py</code>-Response gemappt</li>
-                        <li><span class="cl-tag cl-tag--fix">Fix</span> <code>filter_options</code> korrekt aus Response ausgelesen</li>
-                        <li><span class="cl-tag cl-tag--improve">Verbessert</span> Theme-Toggle Icon: schwarz (Light) / weiß (Dark)</li>
-                        <li><span class="cl-tag cl-tag--improve">Verbessert</span> External-Link Icon: explizit schwarz/weiß statt currentColor</li>
-                        <li><span class="cl-tag cl-tag--improve">Verbessert</span> Native <code>&lt;select&gt;</code> vollständig für Light &amp; Dark thematisiert</li>
-                    </ul>
-                </div>
+            <!-- Hilfe -->
+            <a class="footer-btn footer-link"
+               href="#"
+               aria-label="Hilfe">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Hilfe
+            </a>
 
-                <div class="changelog-entry">
-                    <div class="changelog-meta">
-                        <span class="changelog-version">v1.1.0</span>
-                        <span class="changelog-date">10.05.2026</span>
-                    </div>
-                    <ul class="changelog-items">
-                        <li><span class="cl-tag cl-tag--new">Neu</span> Dark Mode mit animiertem Theme-Toggle</li>
-                        <li><span class="cl-tag cl-tag--new">Neu</span> URL-basierter Router (page, id, filter, pagination)</li>
-                        <li><span class="cl-tag cl-tag--new">Neu</span> Detail-Modal für Bestandsdaten</li>
-                        <li><span class="cl-tag cl-tag--new">Neu</span> Pagination für Bestands- und Bewegungsdaten</li>
-                        <li><span class="cl-tag cl-tag--improve">Verbessert</span> KPI-Cards mit Farbkodierung</li>
-                    </ul>
-                </div>
+            <!-- Datenschutz -->
+            <a class="footer-btn footer-link"
+               href="#"
+               aria-label="Datenschutz">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                Datenschutz
+            </a>
 
-                <div class="changelog-entry">
-                    <div class="changelog-meta">
-                        <span class="changelog-version">v1.0.0</span>
-                        <span class="changelog-date">05.05.2026</span>
-                    </div>
-                    <ul class="changelog-items">
-                        <li><span class="cl-tag cl-tag--new">Neu</span> Initiales Dashboard: Bestandsdaten, Bewegungsdaten, Monitoring</li>
-                        <li><span class="cl-tag cl-tag--new">Neu</span> Scale Design System Integration</li>
-                        <li><span class="cl-tag cl-tag--new">Neu</span> FastAPI Backend-Anbindung</li>
-                    </ul>
-                </div>
+            <!-- Seitenanfang -->
+            <button class="footer-btn" onclick="scrollToTop()" aria-label="Zum Seitenanfang">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="18 15 12 9 6 15"/>
+                </svg>
+                Seitenanfang
+            </button>
 
-            </div>
         </div>
-    </div>
-
+    </footer>
 
     <script>
         function scrollToTop() {
