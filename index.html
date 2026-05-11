@@ -142,7 +142,7 @@
             </div>
         </div>
 
-        <!-- CHANGELOG — renderChangelog() schreibt in #changelog-list -->
+        <!-- CHANGELOG -->
         <div id="page-changelog" class="page-content hidden changelog-overlay">
             <div class="changelog-inner">
                 <div class="changelog-header">
@@ -168,46 +168,14 @@
             onclick="updateUrl(null, {id: null})">Schließen</scale-button>
     </scale-modal>
 
-    <!-- FOOTER -->
+    <!-- FOOTER: Copyright links | Changelog + Seitenanfang rechts -->
     <footer class="dashboard-footer" id="main-footer">
         <span class="footer-copy">&copy; Deutsche Telekom AG</span>
         <div class="footer-right">
             <button class="footer-btn" id="btn-changelog" onclick="updateUrl('changelog')" aria-label="Versionsverlauf">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                </svg>
                 Version <span id="footer-version">v—</span>
             </button>
-            <a class="footer-btn footer-link" href="mailto:servicedesk@telekom.de" aria-label="Servicedesk">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                    <polyline points="22,6 12,13 2,6"/>
-                </svg>
-                Servicedesk
-            </a>
-            <a class="footer-btn footer-link" href="#" aria-label="Hilfe">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                    <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-                Hilfe
-            </a>
-            <a class="footer-btn footer-link" href="#" aria-label="Datenschutz">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-                Datenschutz
-            </a>
             <button class="footer-btn" onclick="scrollToTop()" aria-label="Seitenanfang">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="18 15 12 9 6 15"/>
-                </svg>
                 Seitenanfang
             </button>
         </div>
