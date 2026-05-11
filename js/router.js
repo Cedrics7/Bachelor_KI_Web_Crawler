@@ -1,13 +1,32 @@
 /* =============================================================
    router.js — URL-State-Router & App-Initialisierung
-   Response-Felder entsprechen api.py.
    ============================================================= */
 
 'use strict';
 
-const PAGES = ['bestandsdaten', 'bewegungsdaten', 'monitoring'];
+const PAGES = ['bestandsdaten', 'bewegungsdaten', 'monitoring', 'changelog'];
 
-/* URL-State lesen */
+/* ----------------------------------------------------------
+   Monitoring-Interval: dediziert starten/stoppen
+   beim Navigieren, damit kein "blinder" Refresh läuft.
+---------------------------------------------------------- */
+let _monitoringInterval = null;
+
+function _startMonitoringRefresh() {
+    if (_monitoringInterval) return; // schon aktiv
+    _monitoringInterval = setInterval(loadMonitoring, 10_000);
+}
+
+function _stopMonitoringRefresh() {
+    if (_monitoringInterval) {
+        clearInterval(_monitoringInterval);
+        _monitoringInterval = null;
+    }
+}
+
+/* ----------------------------------------------------------
+   URL-State lesen
+---------------------------------------------------------- */
 function getState() {
     const p = new URLSearchParams(window.location.search);
     return {
@@ -22,7 +41,9 @@ function getState() {
     };
 }
 
-/* URL-State schreiben */
+/* ----------------------------------------------------------
+   URL-State schreiben
+---------------------------------------------------------- */
 function updateUrl(page, overrides = {}) {
     const current = getState();
     const next    = { ...current, ...overrides };
@@ -55,13 +76,23 @@ async function render() {
             ?.classList.toggle('hidden', pg !== state.page);
     });
 
+    /* Monitoring-Interval: nur aktiv wenn Seite sichtbar */
+    if (state.page === 'monitoring') {
+        _startMonitoringRefresh();
+    } else {
+        _stopMonitoringRefresh();
+    }
+
+    /* Changelog: nur anzeigen, kein Datenfetch nötig */
+    if (state.page === 'changelog') return;
+
     _syncFilters(state);
 
     if (state.page === 'bestandsdaten')  await loadBestandsdaten(state);
     if (state.page === 'bewegungsdaten') await loadBewegungsdaten(state);
     if (state.page === 'monitoring')     await loadMonitoring();
 
-    /* Modal */
+    /* Modal: öffnen wenn id in URL, sonst schließen */
     const modal = document.getElementById('detail-modal');
     if (state.id) {
         await loadModal(state.id);
@@ -72,8 +103,6 @@ async function render() {
 
 /* ----------------------------------------------------------
    Bestandsdaten laden
-   api.py Response: { items, total_count, total_pages, page, page_size }
-   /api/stats:      { total, done, pending }
 ---------------------------------------------------------- */
 async function loadBestandsdaten(state) {
     try {
@@ -81,7 +110,6 @@ async function loadBestandsdaten(state) {
             fetchBestandsdaten({ page: state.p, search: state.search, status: state.status }),
             fetchStats(),
         ]);
-
         renderBestandsTable(data.items);
         renderPagination('pagination-controls', state.p, data.total_pages ?? 1, 'goToPage');
         renderKPIs(stats.total ?? 0, stats.done ?? 0, stats.pending ?? 0);
@@ -93,27 +121,19 @@ async function loadBestandsdaten(state) {
 
 /* ----------------------------------------------------------
    Bewegungsdaten laden
-   api.py Response: { items, total_count, total_pages, page, filter_options }
-   filter_options: { bundeslaender: [...], kategorien: [...] }
 ---------------------------------------------------------- */
 async function loadBewegungsdaten(state) {
     try {
         const data = await fetchBewegungsdaten({
-            page: state.p,
-            search: state.search,
-            bl:   state.bl,
-            kat:  state.kat,
-            sort: state.sort,
+            page: state.p, search: state.search,
+            bl: state.bl, kat: state.kat, sort: state.sort,
         });
-
         renderBewegTable(data.items);
         renderPagination('pagination-controls-beweg', state.p, data.total_pages ?? 1, 'goToPage');
 
-        /* Filter-Optionen aus filter_options befüllen */
         const opts = data.filter_options ?? {};
         _populateSelect('filter-beweg-bl',  'Bundesland: Alle', opts.bundeslaender, state.bl);
         _populateSelect('filter-beweg-kat', 'Kategorie: Alle',  opts.kategorien,    state.kat);
-
         _syncScaleModes();
     } catch (err) {
         console.error('Bewegungsdaten:', err);
@@ -121,8 +141,7 @@ async function loadBewegungsdaten(state) {
 }
 
 /* ----------------------------------------------------------
-   Monitoring laden
-   api.py Response: { live: {...}, history: "..." }
+   Monitoring laden — auch vom Interval direkt aufrufbar
 ---------------------------------------------------------- */
 async function loadMonitoring() {
     try {
@@ -130,13 +149,12 @@ async function loadMonitoring() {
         renderMonitoring(data);
     } catch (err) {
         console.error('Monitoring:', err);
-        /* Fallback: leere Struktur anzeigen statt Absturz */
         renderMonitoring({ live: {}, history: `Fehler beim Laden: ${err.message}` });
     }
 }
 
 /* ----------------------------------------------------------
-   Modal laden (einzelner Eintrag via id)
+   Modal laden
 ---------------------------------------------------------- */
 async function loadModal(id) {
     try {
@@ -148,18 +166,19 @@ async function loadModal(id) {
     }
 }
 
-/* Pagination-Helfer */
+/* Pagination */
 function goToPage(page) {
     updateUrl(null, { p: page });
 }
 
-/* Filter-Felder mit URL-State befüllen */
+/* ----------------------------------------------------------
+   Filter DOM → State synchronisieren
+---------------------------------------------------------- */
 function _syncFilters(state) {
     _setVal('filter-bestandsdaten-status', state.status);
     _setVal('filter-beweg-bl',   state.bl);
     _setVal('filter-beweg-kat',  state.kat);
     _setVal('filter-beweg-sort', state.sort);
-
     const suche = document.getElementById('filter-bestandsdaten-suche');
     if (suche && suche.value !== state.search) suche.value = state.search;
 }
@@ -169,7 +188,6 @@ function _setVal(id, value) {
     if (el && el.value !== value) el.value = value;
 }
 
-/* Select-Optionen dynamisch befüllen */
 function _populateSelect(id, defaultLabel, values, current) {
     const el = document.getElementById(id);
     if (!el || !values) return;
@@ -189,16 +207,25 @@ function _syncScaleModes() {
         });
 }
 
-/* Browser-Back/Forward */
+/* ----------------------------------------------------------
+   Browser-Back/Forward
+---------------------------------------------------------- */
 window.addEventListener('popstate', render);
 
+/* ----------------------------------------------------------
+   Modal-Close: scale-modal feuert "scale-close" beim X-Klick
+   und beim Klick auf den Backdrop — id aus URL entfernen.
+   Ohne diesen Listener bleibt ?id=X in der URL hängen.
+---------------------------------------------------------- */
 document.addEventListener('scale-close', (e) => {
     if (e.target?.id === 'detail-modal') {
         updateUrl(null, { id: null });
     }
 });
 
-/* Search-Debounce */
+/* ----------------------------------------------------------
+   Search-Debounce
+---------------------------------------------------------- */
 let _searchTimer = null;
 function _onSearchInput(id, key) {
     document.getElementById(id)?.addEventListener('scale-input', (e) => {
@@ -220,9 +247,4 @@ document.addEventListener('DOMContentLoaded', () => {
     /* API-Status pollen */
     checkApiStatus().then(renderApiStatus);
     setInterval(() => checkApiStatus().then(renderApiStatus), 30_000);
-
-    /* Monitoring Auto-Refresh */
-    setInterval(() => {
-        if (getState().page === 'monitoring') loadMonitoring();
-    }, 10_000);
 });
