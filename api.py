@@ -213,7 +213,7 @@ def get_changelog():
                        json_build_object(
                            'tag',         ci.tag,
                            'description', ci.description
-                       ) ORDER BY ci.sort_order
+                       )
                    ) FILTER (WHERE ci.id IS NOT NULL) AS items
             FROM changelog c
             LEFT JOIN changelog_items ci ON ci.changelog_id = c.id
