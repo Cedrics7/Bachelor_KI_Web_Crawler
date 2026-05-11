@@ -5,6 +5,7 @@ und nutzt Gemini AI zur Textanalyse.
 import os
 import json
 import time
+import threading
 import requests
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from datetime import datetime, date
@@ -146,15 +147,40 @@ def update_live_log(ort, status, funde=0, gespart=False):
 
     # 2. Neuen Status schreiben
     log_data = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "aktueller_ort": ort,
         "status": status,
-        "letzte_funde": gesamt_funde_heute, # Hier steht nun die Tagessumme
+        "letzte_funde": gesamt_funde_heute,
         "hash_match": gespart
     }
 
     with open(status_file, "w", encoding="utf-8") as f:
         json.dump(log_data, f, ensure_ascii=False, indent=4)
+
+
+# =====================================================================
+# --- 3b. HEARTBEAT-THREAD ---
+# Aktualisiert den Timestamp in crawler_live_status.json alle 30s,
+# damit das Dashboard immer sieht ob der Crawler noch lebt.
+# =====================================================================
+_heartbeat_stop = threading.Event()
+
+
+def _heartbeat_worker():
+    """Alle 30s den Timestamp in crawler_live_status.json aktualisieren."""
+    status_file = "crawler_live_status.json"
+    while not _heartbeat_stop.is_set():
+        try:
+            if os.path.exists(status_file):
+                with open(status_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                data["timestamp"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                with open(status_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+        except Exception:
+            pass
+        _heartbeat_stop.wait(30)
+
 
 def extract_pdf_text(url, max_pages):
     try:
@@ -293,6 +319,11 @@ def analyze_with_gemini(gesammelter_text):
 
 # --- 5. MAIN LOOP ---
 def run_crawler():
+    # Heartbeat starten: hält Timestamp alle 30s frisch
+    _heartbeat_stop.clear()
+    heartbeat = threading.Thread(target=_heartbeat_worker, daemon=True)
+    heartbeat.start()
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -308,65 +339,71 @@ def run_crawler():
 
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
 
-    for ags, start_url, ort in targets:
-        start_time = datetime.now()
+    try:
+        for ags, start_url, ort in targets:
+            start_time = datetime.now()
 
-        log_event("🔍", f"Target: {ort} ({start_url})")
-        update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
+            log_event("🔍", f"Target: {ort} ({start_url})")
+            update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
 
-        targets_processed += 1
-        pages = get_subpages(start_url, CONFIG["max_subpages"])
+            targets_processed += 1
+            pages = get_subpages(start_url, CONFIG["max_subpages"])
 
-        text_bulk = ""
-        for url, content in pages:
-            if content and len(text_bulk) + len(content) < 500000:
-                text_bulk += f"\n--- URL: {url} ---\n{content}"
+            text_bulk = ""
+            for url, content in pages:
+                if content and len(text_bulk) + len(content) < 500000:
+                    text_bulk += f"\n--- URL: {url} ---\n{content}"
 
-        if not text_bulk.strip():
-            log_event("⚠️", f"Kein Text für {ort} gefunden.")
-            update_live_log(ort, "⚠️ Kein Text gefunden")
+            if not text_bulk.strip():
+                log_event("⚠️", f"Kein Text für {ort} gefunden.")
+                update_live_log(ort, "⚠️ Kein Text gefunden")
+                cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (datetime.now(), ags))
+                conn.commit()
+                continue
+
+            content_hash = get_content_hash(text_bulk)
+            cursor.execute("SELECT id FROM crawl_results WHERE content_hash = %s", (content_hash,))
+
+            if cursor.fetchone():
+                log_event("🔒", f"Keine Änderungen in {ort} (Hash-Match).")
+                update_live_log(ort, "✅ Stand aktuell (Hash-Match)", gespart=True)
+            else:
+                log_event("🤖", f"Sende Daten für {ort} an Gemini...")
+                update_live_log(ort, "🤖 Gemini Analyse...")
+                found = analyze_with_gemini(text_bulk)
+
+                valid_count = 0
+                for item in found:
+                    m_start = item.get("massnahme_start")
+                    m_ende = item.get("massnahme_ende")
+                    if not m_start and not m_ende: continue
+                    if m_ende:
+                        try:
+                            if datetime.strptime(m_ende, "%Y-%m-%d").date() < min_datum: continue
+                        except:
+                            pass
+
+                    valid_count += 1
+                    cursor.execute("""
+                        INSERT INTO crawl_results (ags,gefunden_am, start_time, end_time, status, kategorie, massnahme, adresse, massnahme_start, massnahme_ende, massnahme_url, content_hash)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (ags, datetime.now().strftime("%x"), start_time, datetime.now(), "Erfolgreich",
+                          item.get('kategorie'), item.get('massnahme'),
+                          item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende"),
+                          item.get("quelle_url"), content_hash))
+
+                total_funde += valid_count
+                log_event("✅", f"Analyse beendet: {valid_count} neue Funde für {ort}.")
+                update_live_log(ort, f"✅ Fertig: {valid_count} Funde", funde=valid_count)
+
             cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (datetime.now(), ags))
             conn.commit()
-            continue
+            time.sleep(CONFIG["sleep_between_targets"])
 
-        content_hash = get_content_hash(text_bulk)
-        cursor.execute("SELECT id FROM crawl_results WHERE content_hash = %s", (content_hash,))
-
-        if cursor.fetchone():
-            log_event("🔒", f"Keine Änderungen in {ort} (Hash-Match).")
-            update_live_log(ort, "✅ Stand aktuell (Hash-Match)", gespart=True)
-        else:
-            log_event("🤖", f"Sende Daten für {ort} an Gemini...")
-            update_live_log(ort, "🤖 Gemini Analyse...")
-            found = analyze_with_gemini(text_bulk)
-
-            valid_count = 0
-            for item in found:
-                m_start = item.get("massnahme_start")
-                m_ende = item.get("massnahme_ende")
-                if not m_start and not m_ende: continue
-                if m_ende:
-                    try:
-                        if datetime.strptime(m_ende, "%Y-%m-%d").date() < min_datum: continue
-                    except:
-                        pass
-
-                valid_count += 1
-                cursor.execute("""
-                    INSERT INTO crawl_results (ags,gefunden_am, start_time, end_time, status, kategorie, massnahme, adresse, massnahme_start, massnahme_ende, massnahme_url, content_hash)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (ags, datetime.now().strftime("%x"), start_time, datetime.now(), "Erfolgreich",
-                      item.get('kategorie'), item.get('massnahme'),
-                      item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende"),
-                      item.get("quelle_url"), content_hash))
-
-            total_funde += valid_count
-            log_event("✅", f"Analyse beendet: {valid_count} neue Funde für {ort}.")
-            update_live_log(ort, f"✅ Fertig: {valid_count} Funde", funde=valid_count)
-
-        cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (datetime.now(), ags))
-        conn.commit()
-        time.sleep(CONFIG["sleep_between_targets"])
+    finally:
+        # Heartbeat stoppen sobald Crawler fertig oder abgebrochen
+        _heartbeat_stop.set()
+        heartbeat.join(timeout=5)
 
     dauer = datetime.now() - start_zeit_dt
     minuten, sekunden = divmod(dauer.seconds, 60)
