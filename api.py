@@ -202,23 +202,35 @@ def get_monitoring():
 
 @app.get("/api/changelog")
 def get_changelog():
-    """Liefert den vollständigen Versionsverlauf aus der Datenbank."""
+    """
+    Liefert den vollständigen Versionsverlauf aus der Datenbank.
+
+    Tabellen-Schema (migration_changelog.sql):
+      changelog       : id, version, release_date, is_current
+      changelog_items : id, changelog_id, tag, description
+
+    Der Alias released_at wird für Frontend-Kompatibilität beibehalten.
+    """
     try:
         conn = get_db_connection(as_dict=True)
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT c.id, c.version, c.released_at, c.summary, c.is_current,
-                   json_agg(
-                       json_build_object(
-                           'tag',         ci.tag,
-                           'description', ci.description
-                       )
-                   ) FILTER (WHERE ci.id IS NOT NULL) AS items
+            SELECT
+                c.id,
+                c.version,
+                c.release_date  AS released_at,
+                c.is_current,
+                json_agg(
+                    json_build_object(
+                        'tag',         ci.tag,
+                        'description', ci.description
+                    )
+                ) FILTER (WHERE ci.id IS NOT NULL) AS items
             FROM changelog c
             LEFT JOIN changelog_items ci ON ci.changelog_id = c.id
-            GROUP BY c.id, c.version, c.released_at, c.summary, c.is_current
-            ORDER BY c.released_at DESC, c.version DESC
+            GROUP BY c.id, c.version, c.release_date, c.is_current
+            ORDER BY c.release_date DESC, c.version DESC
         """)
         rows = cur.fetchall()
         conn.close()
