@@ -1,23 +1,26 @@
+"""
+FastAPI Backend zur Bereitstellung der Crawler-Daten für das Frontend-Dashboard.
+"""
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-import psycopg2
+from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+from datetime import datetime, date
 import os
 import json
-import pandas as pd
-from dotenv import load_dotenv
-from datetime import datetime
-from fastapi.staticfiles import StaticFiles
 import mimetypes
 
-# MIME-Type Fix
+# Lokaler Import
+from database import get_db_connection
+
+# MIME-Type Fixes für korrekte Auslieferung statischer Dateien
 mimetypes.add_type('application/javascript', '.js')
 mimetypes.add_type('text/css', '.css')
 
 load_dotenv()
+app = FastAPI(title="Telekom Web Crawler API")
 
-app = FastAPI()
-
-# Statische Dateien (node_modules) mounten
+# Mount für statische Dateien (Telekom Scale Components)
 script_dir = os.path.dirname(__file__)
 node_path = os.path.join(script_dir, "node_modules")
 if os.path.exists(node_path):
@@ -30,44 +33,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def get_db_connection():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        port=os.getenv("DB_PORT")
-    )
-
 @app.get("/api/stats")
 def get_stats():
+    """Gibt aggregierte KPIs für das Dashboard zurück."""
     try:
         conn = get_db_connection()
+        cursor = conn.cursor()
+
         first_day = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        df_total = pd.read_sql("SELECT COUNT(*) as count FROM crawl_targets", conn)
-        df_done = pd.read_sql(f"SELECT COUNT(*) as count FROM crawl_targets WHERE last_scanned >= '{first_day}'", conn)
-        total = int(df_total['count'][0])
-        done = int(df_done['count'][0])
+
+        cursor.execute("SELECT COUNT(*) FROM crawl_targets")
+        total = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM crawl_targets WHERE last_scanned >= %s", (first_day,))
+        done = cursor.fetchone()[0]
+
         conn.close()
         return {"total": total, "done": done, "pending": total - done}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/api/bewegungsdaten")
 def get_bewegungsdaten(
-        page: int = Query(1, ge=1),
-        page_size: int = Query(50, ge=1, le=500),
-        search: str = Query(None),
-        bundesland: str = Query("Alle"),
-        kategorie: str = Query("Alle"),
-        sort: str = Query("desc")  # Neuer Parameter für die Sortierrichtung
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
+    search: str = Query(None),
+    bundesland: str = Query("Alle"),
+    kategorie: str = Query("Alle"),
+    sort: str = Query("desc")
 ):
+    """Liest die gefundenen Maßnahmen aus."""
     try:
-        conn = get_db_connection()
-        offset = (page - 1) * page_size
+        conn = get_db_connection(as_dict=True)
+        cur = conn.cursor()
 
-        # Dynamische WHERE-Clause
+        offset = (page - 1) * page_size
         where_conditions = ["r.massnahme IS NOT NULL"]
         params = []
 
@@ -75,119 +75,137 @@ def get_bewegungsdaten(
             where_conditions.append("(r.massnahme ILIKE %s OR r.adresse ILIKE %s OR t.ort ILIKE %s)")
             p = f"%{search}%"
             params.extend([p, p, p])
-
         if bundesland != "Alle":
             where_conditions.append("t.bundesland = %s")
             params.append(bundesland)
-
         if kategorie != "Alle":
             where_conditions.append("r.kategorie = %s")
             params.append(kategorie)
 
         where_clause = " WHERE " + " AND ".join(where_conditions)
-
-        # Validierung der Sortierrichtung gegen SQL-Injection
         order_direction = "ASC" if sort.lower() == "asc" else "DESC"
 
-        # 1. Daten abrufen (inklusive dynamischer Sortierung)
-        # Hinweis: Wir nutzen r.end_time für die Sortierung, da dies der technische Zeitstempel ist
+        # 1. Daten abrufen
         query = f"""
             SELECT r.massnahme, r.adresse, t.ort, r.massnahme_start, r.massnahme_ende, 
-                   r.massnahme_url, t.bundesland, r.kategorie, r.end_time
+                   r.massnahme_url, t.bundesland, r.kategorie, r.end_time, r.gefunden_am
             FROM crawl_results r 
             LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text 
             {where_clause}
             ORDER BY r.end_time {order_direction} 
             LIMIT %s OFFSET %s
         """
-        df = pd.read_sql(query, conn, params=params + [page_size, offset])
-        df = df.where(pd.notnull(df), None)
+        cur.execute(query, params + [page_size, offset])
+        raw_items = cur.fetchall()
 
-        # 2. Gesamtanzahl für Pagination
-        count_query = f"SELECT COUNT(*) FROM crawl_results r LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text {where_clause}"
-        cur = conn.cursor()
-        cur.execute(count_query, params)
-        total_count = cur.fetchone()[0]
+        # Formatierung für sauberes JSON
+        items = []
+        for row in raw_items:
+            item = dict(row)
+            for k, v in item.items():
+                if isinstance(v, (datetime, date)):
+                    item[k] = v.strftime('%d.%m.%Y %H:%M') if isinstance(v, datetime) else v.strftime('%d.%m.%Y')
+            items.append(item)
 
-        # 3. Filter-Optionen für die Dropdowns
+        # 2. Metadaten abrufen (Wir nutzen hier sauber denselben Cursor)
+        cur.execute(f"SELECT COUNT(*) as count FROM crawl_results r LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text {where_clause}", params)
+        total_count = cur.fetchone()['count']
+
         cur.execute("SELECT DISTINCT bundesland FROM crawl_targets WHERE bundesland IS NOT NULL ORDER BY bundesland")
-        bl_list = [r[0] for r in cur.fetchall()]
+        bl_list = [r['bundesland'] for r in cur.fetchall()]
+
         cur.execute("SELECT DISTINCT kategorie FROM crawl_results WHERE kategorie IS NOT NULL ORDER BY kategorie")
-        kat_list = [r[0] for r in cur.fetchall()]
+        kat_list = [r['kategorie'] for r in cur.fetchall()]
 
         conn.close()
 
         return {
-            "items": df.to_dict(orient="records"),
+            "items": items,
             "total_count": total_count,
             "total_pages": (total_count + page_size - 1) // page_size,
             "page": page,
             "filter_options": {"bundeslaender": bl_list, "kategorien": kat_list}
         }
     except Exception as e:
+        print(f"Fehler Bewegungsdaten: {e}") # Loggt Fehler ins Terminal
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/bestandsdaten")
 def get_bestandsdaten(
         page: int = Query(1, ge=1),
         page_size: int = Query(50, ge=1, le=500),
-        search: str = Query(None)
+        search: str = Query(None),
+        status: str = Query("Alle")  # NEU: Parameter für den Status
 ):
+    """Liest die Bestandsdaten inkl. Pagination und Status-Filter."""
     try:
-        conn = get_db_connection()
-        offset = (page - 1) * page_size
+        conn = get_db_connection(as_dict=True)
+        cur = conn.cursor()
 
-        # Basis-Query mit Filter-Logik
-        where_clause = ""
+        offset = (page - 1) * page_size
+        where_conditions = []
         params = []
+
+        # Such-Filter
         if search:
-            where_clause = "WHERE ort ILIKE %s OR ags ILIKE %s"
-            search_param = f"%{search}%"
-            params = [search_param, search_param]
+            where_conditions.append("(ort ILIKE %s OR ags ILIKE %s)")
+            params.extend([f"%{search}%", f"%{search}%"])
+
+        # NEU: Status-Filter (Prüft, ob ein Zeitstempel vorhanden ist)
+        if status == "Gecrawlt":
+            where_conditions.append("last_scanned IS NOT NULL")
+        elif status == "Ausstehend":
+            where_conditions.append("last_scanned IS NULL")
+
+        where_clause = ""
+        if where_conditions:
+            where_clause = "WHERE " + " AND ".join(where_conditions)
 
         # 1. Daten abrufen
-        query = f"""
+        cur.execute(f"""
             SELECT id, ort, ags, bundesland, last_scanned, url 
             FROM crawl_targets 
-            {where_clause}
-            ORDER BY id ASC 
-            LIMIT %s OFFSET %s
-        """
-        df = pd.read_sql(query, conn, params=params + [page_size, offset])
+            {where_clause} ORDER BY id ASC LIMIT %s OFFSET %s
+        """, params + [page_size, offset])
 
-        # 2. Gesamtanzahl für Pagination berechnen
-        count_query = f"SELECT COUNT(*) FROM crawl_targets {where_clause}"
-        cur = conn.cursor()
-        cur.execute(count_query, params)
-        total_count = cur.fetchone()[0]
+        raw_items = cur.fetchall()
+
+        items = []
+        for row in raw_items:
+            item = dict(row)
+            if item.get('last_scanned'):
+                item['last_scanned'] = item['last_scanned'].strftime('%d.%m.%Y %H:%M')
+            else:
+                item['last_scanned'] = '-'
+            items.append(item)
+
+        # 2. Count abrufen
+        cur.execute(f"SELECT COUNT(*) as count FROM crawl_targets {where_clause}", params)
+        total_count = cur.fetchone()['count']
 
         conn.close()
 
-        # Formatierung
-        if 'last_scanned' in df.columns:
-            df['last_scanned'] = pd.to_datetime(df['last_scanned'], errors='coerce').dt.strftime(
-                '%d.%m.%Y %H:%M').fillna('-')
-
         return {
-            "items": json.loads(df.to_json(orient="records")),
+            "items": items,
             "total_count": total_count,
             "page": page,
             "page_size": page_size,
             "total_pages": (total_count + page_size - 1) // page_size
         }
     except Exception as e:
+        print(f"Fehler Bestandsdaten: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/monitoring")
 def get_monitoring():
+    """Liefert die Live-Logs und den aktuellen Crawler-Status."""
     try:
-        # Load JSON status
         live_data = {"aktueller_ort": "Unbekannt", "status": "Inaktiv", "letzte_funde": 0, "timestamp": "-"}
         if os.path.exists("crawler_live_status.json"):
             with open("crawler_live_status.json", "r", encoding="utf-8") as f:
                 live_data = json.load(f)
 
-        # Load History TXT
         history_log = ""
         if os.path.exists("crawler_history.txt"):
             with open("crawler_history.txt", "r", encoding="utf-8") as f:

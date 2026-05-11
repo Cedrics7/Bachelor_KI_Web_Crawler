@@ -1,17 +1,20 @@
+"""
+Haupt-Crawler-Logik. Sucht nach Baumaßnahmen auf kommunalen Webseiten
+und nutzt Gemini AI zur Textanalyse.
+"""
 import os
 import json
 import time
 import requests
-from bs4 import BeautifulSoup
-import psycopg2
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from datetime import datetime, date
 from dotenv import load_dotenv
 import google.generativeai as genai
 from urllib.parse import urljoin, urlparse
 import hashlib
 import fitz
-from bs4 import XMLParsedAsHTMLWarning
 import warnings
+from database import get_db_connection
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -42,17 +45,6 @@ model = genai.GenerativeModel(
     'gemini-3.1-flash-lite-preview',
     generation_config={"response_mime_type": "application/json"}
 )
-
-
-def get_db_connection():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        port=os.getenv("DB_PORT")
-    )
-
 
 # =====================================================================
 # --- 2. API LIMIT MANAGER ---

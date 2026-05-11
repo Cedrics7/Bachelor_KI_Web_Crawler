@@ -115,18 +115,35 @@ function setApiStatus(isOnline) {
  */
 async function loadBestandsdaten(page = 1) {
     currentPage = page;
-    const searchVal = document.getElementById('filter-bestandsdaten-suche').value || "";
 
+    // 1. Werte sicher auslesen
+    const searchInput = document.getElementById('filter-bestandsdaten-suche');
+    const statusSelect = document.getElementById('filter-bestandsdaten-status');
+
+    const searchVal = document.getElementById('filter-bestandsdaten-suche').value || "";
+    const statusVal = statusSelect ? statusSelect.value : "Alle";
 
     try {
-        const url = `${API_BASE}/bestandsdaten?page=${page}&page_size=${pageSize}&search=${encodeURIComponent(searchVal)}`;
-        const res = await fetch(url);
+        // 2. Moderne, saubere Parameter-Erstellung (inkl. Status)
+        const params = new URLSearchParams({
+            page: page,
+            page_size: pageSize, // <- Korrigiert auf kleingeschriebenes pageSize!
+            search: searchVal,
+            status: statusVal
+        });
+
+        // 3. API-Aufruf
+        const res = await fetch(`${API_BASE}/bestandsdaten?${params}`);
         const data = await res.json();
 
+        // 4. Tabellen-Update
         renderBestandsTable(data.items);
         renderPagination('pagination-controls', data.total_pages, data.page, 'loadBestandsdaten');
         setApiStatus(true);
-    } catch (e) { setApiStatus(false); }
+    } catch (e) {
+        console.error("Fehler beim Laden der Bestandsdaten:", e);
+        setApiStatus(false);
+    }
 }
 
 function renderBestandsTable(items) {
