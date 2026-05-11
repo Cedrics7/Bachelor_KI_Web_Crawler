@@ -361,7 +361,7 @@ html.dark  .modal-row { border-bottom-color: #2a2a2a; }
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 var(--space-8);
+    padding: 0 2rem;           /* gleicher Rand wie Nav */
     height: 44px;
     border-top: 1px solid var(--dashboard-border);
     background-color: var(--dashboard-bg-card);
@@ -379,43 +379,35 @@ html.dark  .modal-row { border-bottom-color: #2a2a2a; }
     font-weight: 500;
     color: var(--dashboard-text-muted);
     line-height: 1;
+    padding-left: 0.5rem;      /* etwas mehr Abstand vom Rand */
 }
 
 .footer-right {
     display: flex;
     align-items: center;
-    gap: 0;
+    gap: 1.25rem;              /* normaler Abstand, kein Trennstrich */
 }
 
-.footer-btn,
-.footer-link {
+.footer-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 0 var(--space-4);
+    gap: 5px;
+    padding: 0 0.5rem;
     height: 44px;
     background: transparent;
-    border: none;
-    border-left: 1px solid var(--dashboard-border);
+    border: none;              /* kein border-left mehr */
     color: var(--dashboard-text-muted);
     font-size: 0.75rem;
     font-weight: 500;
     font-family: inherit;
     cursor: pointer;
     white-space: nowrap;
-    text-decoration: none;
     transition:
-        color var(--dashboard-transition),
-        background var(--dashboard-transition);
+        color var(--dashboard-transition);
 }
 
-.footer-btn:first-child,
-.footer-link:first-child { border-left: none; }
-
-.footer-btn:hover,
-.footer-link:hover {
+.footer-btn:hover {
     color: var(--telekom-color-primary-standard);
-    background: transparent;
 }
 
 
@@ -463,7 +455,6 @@ html.dark  .modal-row { border-bottom-color: #2a2a2a; }
     color: var(--dashboard-text);
 }
 
-/* Card-Liste (von renderChangelog() generiert) */
 #changelog-list {
     display: flex;
     flex-direction: column;
@@ -485,9 +476,7 @@ html.dark  .modal-row { border-bottom-color: #2a2a2a; }
     border-left: 4px solid var(--telekom-color-primary-standard);
 }
 
-.changelog-card-header {
-    margin-bottom: 1rem;
-}
+.changelog-card-header { margin-bottom: 1rem; }
 
 .changelog-version-row {
     display: flex;
@@ -531,7 +520,6 @@ html.dark  .modal-row { border-bottom-color: #2a2a2a; }
     font-style: italic;
 }
 
-/* Items */
 .changelog-items {
     list-style: none;
     display: flex;
@@ -550,11 +538,8 @@ html.dark  .modal-row { border-bottom-color: #2a2a2a; }
     line-height: 1.5;
 }
 
-.changelog-item-text {
-    flex: 1;
-}
+.changelog-item-text { flex: 1; }
 
-/* Tag-Badge (Farbe via inline style aus render.js TAG_COLORS) */
 .changelog-tag {
     display: inline-block;
     font-size: 0.6rem;
