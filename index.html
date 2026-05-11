@@ -7,11 +7,8 @@
     <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/d/dd/Deutsche_Telekom_2022.svg">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.tailwindcss.com"></script>
-
     <link rel="stylesheet" href="node_modules/@telekom/scale-components/dist/scale-components/scale-components.css" />
     <script type="module" src="node_modules/@telekom/scale-components/dist/scale-components/scale-components.esm.js"></script>
-
-
 </head>
 <body class="transition-colors duration-300">
     <div style="height: 4px; background-color: var(--telekom-color-primary-standard);"></div>
@@ -20,38 +17,37 @@
         <div class="flex items-center gap-10">
             <scale-logo variant="magenta" transparent="yes"></scale-logo>
             <div class="flex gap-8">
-                <span onclick="switchPage('bestandsdaten')" id="nav-bestandsdaten"  class="nav-link active uppercase text-xs tracking-widest">Bestandsdaten</span>
-                <span onclick="switchPage('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link uppercase text-xs tracking-widest">Bewegungsdaten</span>
-                <span onclick="switchPage('monitoring')" id="nav-monitoring" class="nav-link uppercase text-xs tracking-widest">Monitoring</span>
+                <span onclick="updateUrl('bestandsdaten')" id="nav-bestandsdaten" class="nav-link active uppercase text-xs tracking-widest cursor-pointer">Bestandsdaten</span>
+                <span onclick="updateUrl('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link uppercase text-xs tracking-widest cursor-pointer">Bewegungsdaten</span>
+                <span onclick="updateUrl('monitoring')" id="nav-monitoring" class="nav-link uppercase text-xs tracking-widest cursor-pointer">Monitoring</span>
             </div>
         </div>
         <div class="flex items-center gap-6">
-    <!-- Das Icon steuert sich nun über das 'mode' Attribut im JS -->
-    <scale-icon-action-light-dark-mode
-        id="theme-icon"
-        variant="primary"
-        accessibility-title="Design umschalten"
-        onclick="toggleTheme()">
-    </scale-icon-action-light-dark-mode>
-
-    <div class="text-xs font-bold flex items-center" id="api-status-text">
-        <span class="status-dot dot-online" id="api-status-dot"></span>
-        <span id="api-status-label">API LIVE</span>
-    </div>
-</div>
+            <scale-icon-action-light-dark-mode
+                id="theme-icon"
+                variant="primary"
+                accessibility-title="Design umschalten"
+                onclick="toggleTheme()"
+                class="cursor-pointer">
+            </scale-icon-action-light-dark-mode>
+            <div class="text-xs font-bold flex items-center" id="api-status-text">
+                <span class="status-dot dot-online" id="api-status-dot"></span>
+                <span id="api-status-label">API LIVE</span>
+            </div>
+        </div>
     </nav>
 
     <main class="p-10 max-w-[1600px] mx-auto">
         <div id="kpi-row" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div class="scale-card border-l-4 border-gray-400">
+            <div class="scale-card border-l-4 border-gray-400 p-6">
                 <p class="text-xs font-bold uppercase opacity-70">Orte Gesamt</p>
                 <h2 id="kpi-total" class="text-3xl font-black">0</h2>
             </div>
-            <div class="scale-card border-l-4 border-green-500">
+            <div class="scale-card border-l-4 border-green-500 p-6">
                 <p class="text-xs font-bold uppercase opacity-70">Diesen Monat gecrawlt</p>
                 <h2 id="kpi-done" class="text-3xl font-black" style="color: var(--telekom-color-success-standard) !important;">0</h2>
             </div>
-            <div class="scale-card border-l-4" style="border-color: var(--telekom-color-primary-standard);">
+            <div class="scale-card border-l-4 p-6" style="border-color: var(--telekom-color-primary-standard);">
                 <p class="text-xs font-bold uppercase opacity-70">Diesen Monat ausstehend</p>
                 <h2 id="kpi-pending" class="text-3xl font-black" style="color: var(--telekom-color-primary-standard) !important;">0</h2>
             </div>
@@ -61,30 +57,35 @@
             <div class="flex justify-between items-end mb-6">
                 <h1 class="text-3xl font-black">Bestandsdaten</h1>
                 <div class="flex gap-4 items-center">
-                    <scale-text-field id="filter-bestandsdaten-suche" label="Suche Ort/AGS..."></scale-text-field>
-
-                    <select id="filter-bestandsdaten-status" class="p-2 border rounded" onchange="filterBestandsdaten()">
+                    <scale-text-field
+                        id="filter-bestandsdaten-suche"
+                        label="Suche Ort/AGS...">
+                    </scale-text-field>
+                    <select id="filter-bestandsdaten-status" class="dashboard-select" onchange="updateUrl(null, { status: this.value })">
                         <option value="Alle">Crawl-Status: Alle</option>
                         <option value="Gecrawlt">Bereits gecrawlt</option>
                         <option value="Ausstehend">Ausstehend</option>
                     </select>
                 </div>
             </div>
+
             <div class="scale-card overflow-x-auto">
                 <scale-table>
                     <table class="w-full text-left">
                         <thead>
                             <tr>
-                                <th>ID</th><th>Ort</th><th>AGS</th><th>BL</th><th>Letzter Crawl</th><th>Aktion</th>
+                                <th>ID</th>
+                                <th>Ort</th>
+                                <th>AGS</th>
+                                <th>BL</th>
+                                <th>Letzter Crawl</th>
+                                <th>Aktion</th>
                             </tr>
                         </thead>
                         <tbody id="table-bestandsdaten"></tbody>
                     </table>
                 </scale-table>
-                <!-- Innerhalb von #page-bestandsdaten, unter der scale-table -->
-                <div id="pagination-controls" class="flex justify-center items-center gap-4 mt-6">
-    <
-                </div>
+                <div id="pagination-controls" class="flex justify-center items-center gap-4 mt-6 p-4"></div>
             </div>
         </div>
 
@@ -92,21 +93,30 @@
             <div class="mb-6">
                 <h1 class="text-3xl font-black mb-4">Bewegungsdaten</h1>
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded scale-card">
-                    <scale-text-field id="filter-beweg-suche" label="Stichwort..."></scale-text-field>
-                    <select id="filter-beweg-bl" class="p-2 border rounded" onchange="filterBewegungsdaten()"><option value="Alle">Bundesland: Alle</option></select>
-                    <select id="filter-beweg-kat" class="p-2 border rounded" onchange="filterBewegungsdaten()"><option value="Alle">Kategorie: Alle</option></select>
-                    <select id="filter-beweg-sort" class="p-2 border rounded" onchange="loadBewegungsdaten(1)">
+                    <scale-text-field
+                        id="filter-beweg-suche"
+                        label="Stichwort...">
+                    </scale-text-field>
+                    <select id="filter-beweg-bl" class="dashboard-select" onchange="updateUrl(null, { bl: this.value })">
+                        <option value="Alle">Bundesland: Alle</option>
+                    </select>
+                    <select id="filter-beweg-kat" class="dashboard-select" onchange="updateUrl(null, { kat: this.value })">
+                        <option value="Alle">Kategorie: Alle</option>
+                    </select>
+                    <select id="filter-beweg-sort" class="dashboard-select" onchange="updateUrl(null, { sort: this.value })">
                         <option value="desc">Datum: Neueste zuerst</option>
                         <option value="asc">Datum: Älteste zuerst</option>
                     </select>
                 </div>
             </div>
+
             <div class="scale-card overflow-x-auto">
                 <scale-table>
                     <table class="w-full text-left">
-                       <thead>
+                        <thead>
                             <tr>
-                                <th class="p-3 w-2/5">Maßnahme</th> <th class="p-3">Ort / Bundesland</th>
+                                <th class="p-3 w-2/5">Maßnahme</th>
+                                <th class="p-3">Ort / Bundesland</th>
                                 <th class="p-3">Adresse</th>
                                 <th class="p-3">Zeitraum</th>
                                 <th class="p-3">Gefunden am</th>
@@ -116,18 +126,29 @@
                         <tbody id="table-bewegungsdaten"></tbody>
                     </table>
                 </scale-table>
-                <div id="pagination-controls-beweg" class="flex justify-center items-center gap-4 mt-6"></div>
+                <div id="pagination-controls-beweg" class="flex justify-center items-center gap-4 mt-6 p-4"></div>
             </div>
         </div>
 
         <div id="page-monitoring" class="page-content hidden">
             <h1 class="text-3xl font-black mb-6">Crawler Live-Monitoring</h1>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="scale-card"><p class="text-xs font-bold uppercase opacity-60">Aktuelles Ziel</p><h2 id="live-ort" class="text-2xl font-black">-</h2></div>
-                <div class="scale-card"><p class="text-xs font-bold uppercase opacity-60">Funde heute</p><h2 id="live-funde" class="text-2xl font-black" style="color: var(--telekom-color-primary-standard) !important;">0</h2></div>
-                <div class="scale-card"><p class="text-xs font-bold uppercase opacity-60">Status</p><h2 id="live-status" class="text-lg font-bold italic" style="color: var(--telekom-color-info-standard) !important;">Initialisierung...</h2><p id="live-time" class="text-[10px] opacity-50 mt-2 font-mono"></p></div>
+                <div class="scale-card p-6">
+                    <p class="text-xs font-bold uppercase opacity-60">Aktuelles Ziel</p>
+                    <h2 id="live-ort" class="text-2xl font-black">-</h2>
+                </div>
+                <div class="scale-card p-6">
+                    <p class="text-xs font-bold uppercase opacity-60">Funde heute</p>
+                    <h2 id="live-funde" class="text-2xl font-black" style="color: var(--telekom-color-primary-standard) !important;">0</h2>
+                </div>
+                <div class="scale-card p-6">
+                    <p class="text-xs font-bold uppercase opacity-60">Status</p>
+                    <h2 id="live-status" class="text-lg font-bold italic" style="color: var(--telekom-color-info-standard) !important;">Initialisierung...</h2>
+                    <p id="live-time" class="text-[10px] opacity-50 mt-2 font-mono"></p>
+                </div>
             </div>
-            <div class="scale-card text-green-400 font-mono text-sm h-[500px] overflow-y-auto" style="background-color: #111 !important;">
+
+            <div class="scale-card text-green-400 font-mono text-sm h-[500px] overflow-y-auto p-4" style="background-color: #111 !important;">
                 <div class="flex justify-between items-center mb-4 border-b border-zinc-800 pb-2">
                     <span class="text-xs uppercase font-bold opacity-40">crawler history</span>
                     <span class="text-[10px] text-green-600 animate-pulse">● Auto-Refresh active</span>
@@ -137,6 +158,11 @@
         </div>
     </main>
 
-<script src="js/scripts.js"></script>
+    <scale-modal id="detail-modal" heading="Details anzeigen">
+        <div id="modal-content"></div>
+        <scale-button slot="footer" variant="secondary" onclick="updateUrl(null, {id: null})">Schließen</scale-button>
+    </scale-modal>
+
+    <script src="js/scripts.js"></script>
 </body>
 </html>
