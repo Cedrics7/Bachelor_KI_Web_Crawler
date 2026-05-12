@@ -1,131 +1,60 @@
 /* =============================================================
-   api.js — API-Kommunikation
-   Pfade und Feldnamen entsprechen exakt api.py (FastAPI-Backend).
+   api.js — Fetch-Wrapper für alle Backend-Endpunkte
    ============================================================= */
 
 'use strict';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = '';
 
-/* Hilfsfunktion: Query-String aus Objekt (leere/null/"Alle"-Werte überspringen) */
-function buildQueryString(params) {
-    const qs = Object.entries(params)
-        .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 'Alle')
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-        .join('&');
-    return qs ? `?${qs}` : '';
-}
-
-/* ----------------------------------------------------------
-   GET /api/bestandsdaten
-   Query: page, page_size, search, status, bundesland
-   Response: { items, total_count, page, page_size, total_pages, filter_options }
----------------------------------------------------------- */
-async function fetchBestandsdaten(params = {}) {
-    const mapped = {
-        page:       params.page      ?? 1,
-        page_size:  params.page_size ?? 50,
-        search:     params.search    ?? null,
-        status:     params.status    ?? 'Alle',
-        bundesland: params.bl        ?? 'Alle',
-    };
-    const qs = buildQueryString(mapped);
-    const res = await fetch(`${API_BASE}/api/bestandsdaten${qs}`);
-    if (!res.ok) throw new Error(`Bestandsdaten: HTTP ${res.status}`);
+async function _get(path) {
+    const res = await fetch(API_BASE + path);
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${path}`);
     return res.json();
 }
 
-/* ----------------------------------------------------------
-   GET /api/bewegungsdaten
-   Query: page, page_size, search, bundesland, kategorie, sort
-   Response: { items, total_count, total_pages, page, filter_options }
----------------------------------------------------------- */
-async function fetchBewegungsdaten(params = {}) {
-    const mapped = {
-        page:       params.page       ?? 1,
-        page_size:  params.page_size  ?? 50,
-        search:     params.search     ?? null,
-        bundesland: params.bl         ?? 'Alle',
-        kategorie:  params.kat        ?? 'Alle',
-        sort:       params.sort       ?? 'desc',
-    };
-    const qs = buildQueryString(mapped);
-    const res = await fetch(`${API_BASE}/api/bewegungsdaten${qs}`);
-    if (!res.ok) throw new Error(`Bewegungsdaten: HTTP ${res.status}`);
-    return res.json();
+function fetchBestandsdaten({ page = 1, page_size = 50, search = '', status = 'Alle', bl = 'Alle' } = {}) {
+    const p = new URLSearchParams({ page, page_size });
+    if (search)          p.set('search',     search);
+    if (status !== 'Alle') p.set('status',   status);
+    if (bl     !== 'Alle') p.set('bundesland', bl);
+    return _get(`/api/bestandsdaten?${p}`);
 }
 
-/* ----------------------------------------------------------
-   GET /api/bewegung_stats
-   Response: { total, month, today }
-   Fallback: client-seitige Berechnung wenn Endpoint fehlt
----------------------------------------------------------- */
-async function fetchBewegungStats() {
-    try {
-        const res = await fetch(`${API_BASE}/api/bewegung_stats`, {
-            signal: AbortSignal.timeout(3000),
-        });
-        if (res.ok) return res.json();
-    } catch {}
-    /* Fallback: total aus allgemeinen Stats, month/today = 0 */
-    try {
-        const s = await fetchStats();
-        return { total: s.total ?? 0, month: 0, today: 0 };
-    } catch {
-        return { total: 0, month: 0, today: 0 };
-    }
+function fetchBewegungsdaten({ page = 1, page_size = 50, search = '', bl = 'Alle', kat = 'Alle', sort = 'desc' } = {}) {
+    const p = new URLSearchParams({ page, page_size, sort });
+    if (search)        p.set('search',     search);
+    if (bl  !== 'Alle') p.set('bundesland', bl);
+    if (kat !== 'Alle') p.set('kategorie',  kat);
+    return _get(`/api/bewegungsdaten?${p}`);
 }
 
-/* ----------------------------------------------------------
-   GET /api/stats
-   Response: { total, done, pending }
----------------------------------------------------------- */
-async function fetchStats() {
-    const res = await fetch(`${API_BASE}/api/stats`);
-    if (!res.ok) throw new Error(`Stats: HTTP ${res.status}`);
-    return res.json();
+function fetchStats({ status = 'Alle', bl = 'Alle' } = {}) {
+    const p = new URLSearchParams();
+    if (status !== 'Alle') p.set('status',     status);
+    if (bl     !== 'Alle') p.set('bundesland', bl);
+    const qs = p.toString();
+    return _get(`/api/stats${qs ? '?' + qs : ''}`);
 }
 
-/* ----------------------------------------------------------
-   GET /api/monitoring
-   Response: {
-       live: { aktueller_ort, status, letzte_funde, timestamp },
-       history: "<log-text>"
-   }
----------------------------------------------------------- */
-async function fetchMonitoringData() {
-    const res = await fetch(`${API_BASE}/api/monitoring`);
-    if (!res.ok) throw new Error(`Monitoring: HTTP ${res.status}`);
-    return res.json();
+function fetchBewegungStats({ bl = 'Alle', kat = 'Alle' } = {}) {
+    const p = new URLSearchParams();
+    if (bl  !== 'Alle') p.set('bundesland', bl);
+    if (kat !== 'Alle') p.set('kategorie',  kat);
+    const qs = p.toString();
+    return _get(`/api/bewegung_stats${qs ? '?' + qs : ''}`);
 }
 
-/* ----------------------------------------------------------
-   GET /api/changelog
-   Response: {
-       versions: [
-           {
-               id, version, released_at, summary, is_current,
-               items: [ { tag, description }, … ]
-           }, …
-       ]
-   }
-   Versionen kommen bereits absteigend sortiert vom Backend.
----------------------------------------------------------- */
-async function fetchChangelog() {
-    const res = await fetch(`${API_BASE}/api/changelog`);
-    if (!res.ok) throw new Error(`Changelog: HTTP ${res.status}`);
-    return res.json();   // { versions: [...] }
+function fetchMonitoringData() {
+    return _get('/api/monitoring');
 }
 
-/* ----------------------------------------------------------
-   Health-Check (kein dedizierter Endpoint in api.py —
-   wir nutzen /api/stats als Proxy, timeout 3s)
----------------------------------------------------------- */
+function fetchChangelog() {
+    return _get('/api/changelog');
+}
+
 async function checkApiStatus() {
     try {
-        const res = await fetch(`${API_BASE}/api/stats`, {
-            signal: AbortSignal.timeout(3000),
-        });
+        const res = await fetch('/api/stats', { signal: AbortSignal.timeout(4000) });
         return res.ok;
     } catch {
         return false;

@@ -24,17 +24,17 @@ async function _refreshKpis() {
     const state = getState();
     try {
         if (state.page === 'bestandsdaten') {
-            const s = await fetchStats();
+            const s = await fetchStats({ status: state.status, bl: state.bl });
             renderKPIs(s.total ?? 0, s.done ?? 0, s.pending ?? 0);
         } else if (state.page === 'bewegungsdaten') {
-            const s = await fetchBewegungStats();
+            const s = await fetchBewegungStats({ bl: state.bl, kat: state.kat });
             renderBewegKPIs(s.total ?? 0, s.month ?? 0, s.today ?? 0);
         }
     } catch {}
 }
 
 /* ----------------------------------------------------------
-   KPI-Sichtbarkeit je Seite — sofort aufrufen vor Datenladen
+   KPI-Sichtbarkeit je Seite
 ---------------------------------------------------------- */
 function _updateKpiVisibility(page) {
     const kpiBestand = document.getElementById('kpi-row');
@@ -90,7 +90,6 @@ async function render() {
         document.getElementById(`page-${pg}`)?.classList.toggle('hidden', pg !== state.page);
     });
 
-    /* KPI-Zeilen sofort ein-/ausblenden */
     _updateKpiVisibility(state.page);
 
     if (state.page === 'monitoring') _startMonitoringRefresh();
@@ -104,7 +103,6 @@ async function render() {
     if (state.page === 'bewegungsdaten') await loadBewegungsdaten(state);
     if (state.page === 'monitoring')     await loadMonitoring();
 
-    /* Modal */
     const modal = document.getElementById('detail-modal');
     if (state.id) {
         await loadModal(state.id, state.idtype);
@@ -120,7 +118,7 @@ async function loadBestandsdaten(state) {
     try {
         const [data, stats] = await Promise.all([
             fetchBestandsdaten({ page: state.p, search: state.search, status: state.status, bl: state.bl }),
-            fetchStats(),
+            fetchStats({ status: state.status, bl: state.bl }),
         ]);
         renderBestandsTable(data.items);
         renderPagination('pagination-controls', state.p, data.total_pages ?? 1, 'goToPage');
@@ -139,7 +137,7 @@ async function loadBewegungsdaten(state) {
     try {
         const [data, bewegStats] = await Promise.all([
             fetchBewegungsdaten({ page: state.p, search: state.search, bl: state.bl, kat: state.kat, sort: state.sort }),
-            fetchBewegungStats(),
+            fetchBewegungStats({ bl: state.bl, kat: state.kat }),
         ]);
         renderBewegTable(data.items);
         renderPagination('pagination-controls-beweg', state.p, data.total_pages ?? 1, 'goToPage');
@@ -247,7 +245,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     _onSearchInput('filter-bestandsdaten-suche', 'search');
     _onSearchInput('filter-beweg-suche',         'search');
 
-    /* Initiale KPI-Sichtbarkeit sofort setzen (vor dem ersten render()) */
     _updateKpiVisibility(getState().page);
 
     try {

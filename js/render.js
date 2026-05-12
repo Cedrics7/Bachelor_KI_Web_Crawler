@@ -17,7 +17,6 @@ function externalLinkIcon() {
         </svg>`;
 }
 
-/* Zentrierte Quell-Zelle mit stopPropagation-Wrapper */
 function _srcCell(url, mode) {
     return `
         <td style="text-align:center;vertical-align:middle;width:48px">
@@ -58,6 +57,19 @@ function _formatDateTime(raw) {
         if (isNaN(d.getTime())) return esc(raw);
         const pad = (n) => String(n).padStart(2, '0');
         return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch {
+        return esc(raw);
+    }
+}
+
+/* Nur Datum (DD.MM.YYYY) */
+function _formatDate(raw) {
+    if (!raw) return '-';
+    try {
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return esc(raw);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
     } catch {
         return esc(raw);
     }
@@ -125,7 +137,7 @@ function renderBestandsTable(items) {
 }
 
 /* ----------------------------------------------------------
-   Bewegungsdaten-Tabelle — mit Kategorie-Badge + Modal
+   Bewegungsdaten-Tabelle
 ---------------------------------------------------------- */
 function renderBewegTable(items) {
     const mode  = _mode();
@@ -144,12 +156,12 @@ function renderBewegTable(items) {
                 <div style="margin-top:0.3rem">${esc(row.massnahme)}</div>
             </td>
             <td>
-                ${esc(row.ort)}
+                ${esc(row.ort ?? '-')}
                 <br><small style="opacity:0.55">${esc(row.bundesland ?? '')}</small>
             </td>
             <td>${esc(row.adresse ?? '-')}</td>
             <td>${_dateRange(row.massnahme_start, row.massnahme_ende)}</td>
-            <td>${_formatDateTime(row.gefunden_am ?? row.end_time)}</td>
+            <td>${_formatDateTime(row.end_time)}</td>
             ${_srcCell(row.massnahme_url ?? '#', mode)}
         </tr>
     `).join('');
@@ -221,7 +233,7 @@ function renderModalBewegung(row) {
         ['Ort',         row.ort],
         ['Bundesland',  row.bundesland ?? '-'],
         ['Zeitraum',    _dateRange(row.massnahme_start, row.massnahme_ende)],
-        ['Gefunden am', _formatDateTime(row.gefunden_am ?? row.end_time)],
+        ['Gefunden am', _formatDateTime(row.end_time)],
         ['Quelle', row.massnahme_url
             ? `<a href="${esc(row.massnahme_url)}" target="_blank" rel="noopener noreferrer">${esc(row.massnahme_url)}</a>`
             : '-'],
@@ -343,9 +355,10 @@ function esc(str) {
         .replace(/"/g,  '&quot;');
 }
 
+/* Zeitraum: Datumsstrings als DD.MM.YYYY formatieren */
 function _dateRange(von, bis) {
     if (!von && !bis) return '-';
-    return `${von ?? ''}${bis ? ` – ${bis}` : ''}`;
+    return `${_formatDate(von)}${bis ? ` – ${_formatDate(bis)}` : ''}`;
 }
 
 function _mode() {
