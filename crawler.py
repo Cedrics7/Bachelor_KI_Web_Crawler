@@ -94,13 +94,13 @@ class TokenManager:
 
     def check_limits(self, estimated_tokens):
         if estimated_tokens >= self.tpm_limit:
-            print(f"!!! WARNUNG: Prompt zu groß ({estimated_tokens} Tokens) – übersprungen!")
+            log_event("!!!", f"WARNUNG: Prompt zu groß ({estimated_tokens} Tokens) – übersprungen!")
             return False
         if date.today() > self.day_start_time:
             self.requests_today = 0
             self.day_start_time = date.today()
         if self.requests_today >= self.rpd_limit:
-            print("!!! Tageslimit (RPD) erreicht.")
+            log_event("!!!", "Tageslimit (RPD) erreicht.")
             return False
         while True:
             self._evict_old()
@@ -113,7 +113,7 @@ class TokenManager:
             reason    = "RPM" if not rpm_ok else "TPM"
             rpm_info  = f"{self._current_rpm()}/{self.rpm_limit} RPM"
             tpm_info  = f"{self._current_tpm():,}/{self.tpm_limit:,} TPM"
-            print(f"--- API Schutz ({reason}): {rpm_info}  {tpm_info}  → warte {wait_secs:.1f}s ---")
+            log_event("⏳", f"API Schutz ({reason}): {rpm_info}  {tpm_info}  → warte {wait_secs:.1f}s")
             time.sleep(wait_secs)
 
     def update_usage(self, token_count):
@@ -263,13 +263,14 @@ def extract_pdf_text(url, max_pages):
             if c_date.startswith("D:"):
                 year = int(c_date[2:6])
                 if year < CONFIG["min_pdf_year"]:
-                    print(f"      - Ignoriere altes PDF ({year})")
+                    _write_console_log(f"[{get_german_time()}]       - Ignoriere altes PDF ({year}): {url[:60]}")
                     return ""
             text = ""
             for page in doc[:max_pages]:
                 text += page.get_text()
             return text
-    except Exception:
+    except Exception as e:
+        _write_console_log(f"[{get_german_time()}]   ❌  PDF-Fehler ({url[:60]}): {e}")
         return ""
 
 
@@ -340,21 +341,18 @@ def get_subpages(start_url, max_pages):
             status_log[curr] = resp.status_code
 
             # Nach Redirect: finale URL ebenfalls als besucht markieren
-            # Verhindert dass z.B. /planen-bauen und /planen-bauen/ doppelt gecrawlt werden,
-            # aber NICHT dass /planen-bauen/baumassnahmen uebersprungen wird.
             if resp.url != curr:
                 final_base = get_url_base(resp.url)
                 if final_base in visited_base and final_base != curr_base:
-                    # Redirect-Ziel war schon besucht -> diesen Request verwerfen
                     skipped_urls.append(curr)
-                    visited_base.discard(curr_base)  # curr_base wieder freigeben
+                    visited_base.discard(curr_base)
                     continue
                 visited_base.add(final_base)
                 visited_full.add(resp.url)
 
             if resp.status_code == 200:
                 if curr.lower().endswith(".pdf"):
-                    print(f"  - Scanne PDF: {curr[:50]}...")
+                    _write_console_log(f"[{get_german_time()}]   - Scanne PDF: {curr[:70]}")
                     text = extract_pdf_text(curr, CONFIG["max_pdf_pages"])
                     if text:
                         pdf_collected.append((curr, text))
@@ -376,10 +374,14 @@ def get_subpages(start_url, max_pages):
                                 to_visit.append(nxt)
         except requests.exceptions.Timeout:
             status_log[curr] = "TIMEOUT"
-        except requests.exceptions.ConnectionError:
+            _write_console_log(f"[{get_german_time()}]   ⏰ TIMEOUT: {curr[:80]}")
+        except requests.exceptions.ConnectionError as e:
             status_log[curr] = "CONNECTION_ERROR"
+            _write_console_log(f"[{get_german_time()}]   🔌 CONNECTION_ERROR: {curr[:70]} | {str(e)[:60]}")
         except Exception as ex:
-            status_log[curr] = f"ERROR: {str(ex)[:60]}"
+            err = f"ERROR: {str(ex)[:60]}"
+            status_log[curr] = err
+            _write_console_log(f"[{get_german_time()}]   ❌ {err} bei {curr[:70]}")
 
     return html_collected, pdf_collected, skipped_urls, status_log
 
@@ -411,7 +413,8 @@ def assemble_text(ort, html_pages, pdf_pages, limit):
             neu_pdf_texte.append((url, neu_text))
         gesamt_neu = sum(len(t) for _, t in neu_pdf_texte)
         if gesamt_neu <= verbleibend:
-            print(f"  ⚠️  Textlimit bei {ort} – PDFs auf {reduzierte_seiten} Seite(n) gekürzt")
+            log_event("⚠️", f"Textlimit bei {ort} – PDFs auf {reduzierte_seiten} Seite(n) gekürzt "
+                           f"({len(neu_pdf_texte)} PDFs betroffen)")
             for url, content in neu_pdf_texte:
                 if content:
                     text_bulk += f"\n--- URL: {url} ---\n{content}"
@@ -438,13 +441,13 @@ def assemble_text(ort, html_pages, pdf_pages, limit):
             t = extract_pdf_text(url, 1)
             probe_texte.append((url, t))
         if sum(len(t) for _, t in probe_texte) <= verbleibend:
-            print(f"  ⚠️  Textlimit bei {ort} – {verworfen} älteste PDF(s) verworfen")
+            log_event("⚠️", f"Textlimit bei {ort} – {verworfen} älteste PDF(s) verworfen (mögl. Datenverlust)")
             for url, content in probe_texte:
                 if content:
                     text_bulk += f"\n--- URL: {url} ---\n{content}"
             return text_bulk, hat_gekuerzt, True
 
-    print(f"  ⚠️  Textlimit bei {ort} – nur noch Prio-PDFs mit je 1 Seite")
+    log_event("⚠️", f"Textlimit bei {ort} – nur noch Prio-PDFs mit je 1 Seite")
     for url, _ in prio_pdfs:
         content = extract_pdf_text(url, 1)
         if content and len(text_bulk) + len(content) < limit:
@@ -488,13 +491,13 @@ def _call_gemini_with_retry(prompt, est_tokens):
             if any(code in fehler_str for code in ["503", "504", "ServiceUnavailable", "GatewayTimeout"]):
                 if versuch < retries:
                     wait = delays[versuch]
-                    print(f"  ⚠️  Gemini {fehler_str[:30].strip()} – Versuch {versuch + 1}/{retries}, warte {wait}s ...")
+                    log_event("⚠️", f"Gemini {fehler_str[:50].strip()} – Versuch {versuch + 1}/{retries}, warte {wait}s ...")
                     time.sleep(wait)
                 else:
-                    print(f"  ❌  Gemini nach {retries} Versuchen nicht erreichbar – übersprungen.")
+                    log_event("❌", f"Gemini nach {retries} Versuchen nicht erreichbar – übersprungen.")
                     return None
             else:
-                print(f"  ❌  Gemini-Fehler (kein Retry): {fehler_str[:80]}")
+                log_event("❌", f"Gemini-Fehler (kein Retry): {fehler_str[:100]}")
                 return None
     return None
 
@@ -559,7 +562,7 @@ def analyze_with_gemini(gesammelter_text, start_url):
             item["quelle_url"] = normalize_url(item.get("quelle_url"), start_url)
         return massnahmen
     except Exception as e:
-        print(f"  ❌  JSON-Parsing fehlgeschlagen: {e}")
+        log_event("❌", f"JSON-Parsing fehlgeschlagen: {e}")
         return []
 
 
