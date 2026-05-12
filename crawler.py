@@ -4,6 +4,7 @@ und nutzt Gemini AI zur Textanalyse.
 """
 import os
 import json
+import re
 import time
 import threading
 import requests
@@ -44,6 +45,13 @@ CONFIG = {
         "Tiefbau": ["Tiefbau", "Straßenbau", "Kanalsanierung", "Brückenbau"]
     }
 }
+
+# Keywords im Dateinamen → PDF ist besonders relevant
+PDF_PRIO_KEYWORDS = [
+    "bekanntmachung", "bebauungsplan", "b-plan", "bplan",
+    "satzung", "erschließung", "erschliessung", "ausschreibung",
+    "vergabe", "foerderung", "förderung", "sanierung", "tiefbau"
+]
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -222,6 +230,18 @@ def extract_pdf_text(url, max_pages):
         return ""
 
 
+def get_pdf_year(url):
+    """Extrahiert das Jahr aus dem PDF-Dateinamen (z.B. 2026_05_08_... → 2026)."""
+    match = re.search(r'(20\d{2})', url.split("/")[-1])
+    return int(match.group(1)) if match else 9999
+
+
+def is_prio_pdf(url):
+    """Gibt True zurück wenn der Dateiname ein Relevanz-Keyword enthält."""
+    filename = url.split("/")[-1].lower()
+    return any(kw in filename for kw in PDF_PRIO_KEYWORDS)
+
+
 def get_content_hash(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
@@ -274,7 +294,97 @@ def get_subpages(start_url, max_pages):
                                 to_visit.append(nxt)
         except:
             continue
-    return html_collected + pdf_collected
+    return html_collected, pdf_collected
+
+
+def assemble_text(ort, html_pages, pdf_pages, limit):
+    """
+    Baut den Gesamttext mit klarer Priorisierung:
+    1. HTML-Seiten immer vollständig
+    2. PDFs mit Relevanz-Keywords zuerst
+    3. Nur bei Platzmangel: Seitenzahl reduzieren, dann älteste PDFs verwerfen
+    Gibt (text, hat_gekuerzt, hat_verworfen) zurück.
+    """
+    text_bulk = ""
+
+    # --- Schritt 1: HTML komplett einbauen ---
+    for url, content in html_pages:
+        if content:
+            text_bulk += f"\n--- URL: {url} ---\n{content}"
+
+    # --- Schritt 2: PDFs sortieren (Prio-PDFs zuerst, dann nach Jahr absteigend) ---
+    prio_pdfs    = [(u, t) for u, t in pdf_pages if is_prio_pdf(u)]
+    normale_pdfs = [(u, t) for u, t in pdf_pages if not is_prio_pdf(u)]
+    normale_pdfs.sort(key=lambda x: get_pdf_year(x[0]), reverse=True)
+    sortierte_pdfs = prio_pdfs + normale_pdfs
+
+    verbleibend = limit - len(text_bulk)
+
+    # Prüfen ob alle PDFs reinpassen
+    gesamt_pdf_text = sum(len(t) for _, t in sortierte_pdfs)
+    if gesamt_pdf_text <= verbleibend:
+        for url, content in sortierte_pdfs:
+            text_bulk += f"\n--- URL: {url} ---\n{content}"
+        return text_bulk, False, False
+
+    # --- Schritt 3: Seitenzahl schrittweise reduzieren ---
+    hat_gekuerzt = False
+    for reduzierte_seiten in [3, 2, 1]:
+        neu_pdf_texte = []
+        for url, _ in sortierte_pdfs:
+            neu_text = extract_pdf_text(url, reduzierte_seiten)
+            neu_pdf_texte.append((url, neu_text))
+
+        gesamt_neu = sum(len(t) for _, t in neu_pdf_texte)
+        if gesamt_neu <= verbleibend:
+            print(f"  ⚠️  Textlimit bei {ort} – PDFs auf {reduzierte_seiten} Seite(n) gekürzt "
+                  f"({len(neu_pdf_texte)} PDFs betroffen)")
+            for url, content in neu_pdf_texte:
+                if content:
+                    text_bulk += f"\n--- URL: {url} ---\n{content}"
+            return text_bulk, True, False
+        hat_gekuerzt = True
+
+    # --- Schritt 4: Älteste PDFs verwerfen bis es passt ---
+    # Prio-PDFs niemals verwerfen, normale PDFs nach Jahr aufsteigend (älteste zuerst raus)
+    normale_pdfs_sortiert = sorted(normale_pdfs, key=lambda x: get_pdf_year(x[0]))
+    verbleibende_pdfs     = list(prio_pdfs) + list(normale_pdfs_sortiert)
+    verworfen             = 0
+
+    while verbleibende_pdfs:
+        # Ältestes normales PDF entfernen (hinten in prio_pdfs, vorne in normale_pdfs_sortiert)
+        entfernt = False
+        for i in range(len(verbleibende_pdfs) - 1, -1, -1):
+            url, _ = verbleibende_pdfs[i]
+            if not is_prio_pdf(url):
+                verbleibende_pdfs.pop(i)
+                verworfen += 1
+                entfernt = True
+                break
+        if not entfernt:
+            break  # Nur noch Prio-PDFs übrig – nicht mehr verwerfen
+
+        # Mit 1 Seite pro verbleibendem PDF neu berechnen
+        probe_texte = []
+        for url, _ in verbleibende_pdfs:
+            t = extract_pdf_text(url, 1)
+            probe_texte.append((url, t))
+
+        if sum(len(t) for _, t in probe_texte) <= verbleibend:
+            print(f"  ⚠️  Textlimit bei {ort} – {verworfen} älteste PDF(s) verworfen (mögl. Datenverlust)")
+            for url, content in probe_texte:
+                if content:
+                    text_bulk += f"\n--- URL: {url} ---\n{content}"
+            return text_bulk, hat_gekuerzt, True
+
+    # Fallback: Prio-PDFs mit 1 Seite, Rest verworfen
+    print(f"  ⚠️  Textlimit bei {ort} – nur noch Prio-PDFs mit je 1 Seite berücksichtigt")
+    for url, _ in prio_pdfs:
+        content = extract_pdf_text(url, 1)
+        if content and len(text_bulk) + len(content) < limit:
+            text_bulk += f"\n--- URL: {url} ---\n{content}"
+
+    return text_bulk, True, True
 
 
 # =====================================================================
@@ -326,10 +436,6 @@ def _call_gemini_with_retry(prompt, est_tokens):
 
 
 def analyze_with_gemini(gesammelter_text, start_url):
-    if len(gesammelter_text) > CONFIG["max_text_chars"]:
-        print(f"  ⚠️  Text gekürzt: {len(gesammelter_text):,} → {CONFIG['max_text_chars']:,} Zeichen")
-        gesammelter_text = gesammelter_text[:CONFIG["max_text_chars"]]
-
     est_tokens = len(gesammelter_text) // 4
     if not api_guard.check_limits(est_tokens):
         return []
@@ -441,12 +547,11 @@ def run_crawler():
             update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
 
             targets_processed += 1
-            pages = get_subpages(start_url, CONFIG["max_subpages"])
+            html_pages, pdf_pages = get_subpages(start_url, CONFIG["max_subpages"])
 
-            text_bulk = ""
-            for url, content in pages:
-                if content and len(text_bulk) + len(content) < 500_000:
-                    text_bulk += f"\n--- URL: {url} ---\n{content}"
+            text_bulk, hat_gekuerzt, hat_verworfen = assemble_text(
+                ort, html_pages, pdf_pages, CONFIG["max_text_chars"]
+            )
 
             if not text_bulk.strip():
                 log_event("⚠️", f"Kein Text für {ort} gefunden.")
