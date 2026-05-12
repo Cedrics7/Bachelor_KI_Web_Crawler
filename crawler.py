@@ -12,7 +12,8 @@ from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from collections import deque
 from datetime import datetime, date
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 import hashlib
 import fitz
@@ -34,9 +35,7 @@ CONFIG = {
     "max_pdf_pages": 5,
     "timeout_seconds": 10,
     "sleep_between_targets": 2,
-    # Filter: Maßnahmen deren Enddatum vor diesem Datum liegt werden ignoriert
     "min_end_datum": str(date.today()),
-    # Filter: PDFs deren Erstellungsjahr älter als dieser Wert ist werden ignoriert
     "min_pdf_year": 2024,
     "max_text_chars": 500_000,
     "gemini_retries": 3,
@@ -50,15 +49,13 @@ CONFIG = {
 }
 
 # Query-Parameter die als harmlos gelten und für den Dedup-Check ignoriert werden.
-# URLs die NUR diese Parameter enthalten gelten als Duplikat der Basis-URL.
-# Parameter die NICHT hier stehen (z.B. ?projekt=2, ?id=5) werden weiterhin gecrawlt.
+# "filter" wurde ENTFERNT, da ?filter=bauleitplanung echte Inhalte liefert!
 IGNORIERE_PARAMS = {
-    "sort", "order", "view", "page", "fil", "filter",
+    "sort", "order", "view", "page", "fil",
     "lang", "style", "layout", "tab", "session", "ref",
     "utm_source", "utm_medium", "utm_campaign"
 }
 
-# Keywords im Dateinamen → PDF ist besonders relevant
 PDF_PRIO_KEYWORDS = [
     "bekanntmachung", "bebauungsplan", "b-plan", "bplan",
     "satzung", "erschließung", "erschliessung", "ausschreibung",
@@ -69,11 +66,8 @@ CONSOLE_LOG_FILE = "crawler_console.log"
 SKIPPED_LOG_FILE = "crawler_skipped_urls.log"
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel(
-    'gemini-3.1-flash-lite-preview',
-    generation_config={"response_mime_type": "application/json"}
-)
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+GEMINI_MODEL = "gemini-2.5-flash-preview-04-17"
 
 # =====================================================================
 # --- 2. API LIMIT MANAGER (Rolling Window) ---
@@ -138,10 +132,6 @@ def get_german_time():
 
 
 def _reset_log_if_new_month(filepath):
-    """
-    Setzt ein Logfile am Monatsanfang zurück.
-    Liest den ersten Zeitstempel der Datei und vergleicht den Monat.
-    """
     if not os.path.exists(filepath):
         return
     try:
@@ -167,10 +157,6 @@ def _write_console_log(line: str):
 
 
 def write_skipped_urls(ort, skipped_urls: list):
-    """
-    Schreibt übersprungene URLs (Dedup) pro Ort ins Skipped-Log.
-    Nur wenn tatsächlich URLs übersprungen wurden.
-    """
     if not skipped_urls:
         return
     zeit = get_german_time()
@@ -316,29 +302,25 @@ def is_relevant_url(url):
 def get_url_base(url):
     """
     Gibt die URL zurück, bei der nur harmlose Query-Parameter (IGNORIERE_PARAMS)
-    entfernt wurden. Bedeutungsvolle Parameter (z.B. ?projekt=2, ?id=5) bleiben erhalten.
-
-    Beispiele:
-      /baugebiete.html?fil=1&sort=asc  →  /baugebiete.html       (alles ignoriert)
-      /baugebiete.html?projekt=2       →  /baugebiete.html?projekt=2  (bleibt!)
-      /news.html?page=3&id=42          →  /news.html?id=42        (page ignoriert, id bleibt)
+    entfernt wurden. Bedeutungsvolle Parameter bleiben erhalten.
     """
     parsed = urlparse(url)
     if not parsed.query:
         return parsed._replace(fragment="").geturl()
-    params    = parse_qs(parsed.query, keep_blank_values=True)
-    gefiltert = {k: v for k, v in params.items() if k.lower() not in IGNORIERE_PARAMS}
+    params     = parse_qs(parsed.query, keep_blank_values=True)
+    gefiltert  = {k: v for k, v in params.items() if k.lower() not in IGNORIERE_PARAMS}
     neue_query = urlencode(gefiltert, doseq=True)
     return parsed._replace(query=neue_query, fragment="").geturl()
 
 
 def get_subpages(start_url, max_pages):
-    visited_base = set()
-    visited_full = set()
-    to_visit     = [start_url]
+    visited_base   = set()
+    visited_full   = set()
+    to_visit       = [start_url]
     html_collected = []
     pdf_collected  = []
-    skipped_urls   = []          # Sammlung übersprungener Dedup-URLs
+    skipped_urls   = []
+    status_log     = {}   # url -> HTTP-Statuscode oder Fehlertext für Diagnose
     base_domain    = urlparse(start_url).netloc
     prio_keywords  = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
 
@@ -355,6 +337,7 @@ def get_subpages(start_url, max_pages):
         try:
             resp = requests.get(curr, timeout=CONFIG["timeout_seconds"],
                                 headers={'User-Agent': 'BachelorCrawler/1.0'})
+            status_log[curr] = resp.status_code
             if resp.status_code == 200:
                 if curr.lower().endswith(".pdf"):
                     print(f"  - Scanne PDF: {curr[:50]}...")
@@ -377,10 +360,14 @@ def get_subpages(start_url, max_pages):
                                 to_visit.insert(0, nxt)
                             else:
                                 to_visit.append(nxt)
-        except:
-            continue
+        except requests.exceptions.Timeout:
+            status_log[curr] = "TIMEOUT"
+        except requests.exceptions.ConnectionError:
+            status_log[curr] = "CONNECTION_ERROR"
+        except Exception as ex:
+            status_log[curr] = f"ERROR: {str(ex)[:60]}"
 
-    return html_collected, pdf_collected, skipped_urls
+    return html_collected, pdf_collected, skipped_urls, status_log
 
 
 def assemble_text(ort, html_pages, pdf_pages, limit):
@@ -410,8 +397,7 @@ def assemble_text(ort, html_pages, pdf_pages, limit):
             neu_pdf_texte.append((url, neu_text))
         gesamt_neu = sum(len(t) for _, t in neu_pdf_texte)
         if gesamt_neu <= verbleibend:
-            print(f"  ⚠️  Textlimit bei {ort} – PDFs auf {reduzierte_seiten} Seite(n) gekürzt "
-                  f"({len(neu_pdf_texte)} PDFs betroffen)")
+            print(f"  ⚠️  Textlimit bei {ort} – PDFs auf {reduzierte_seiten} Seite(n) gekürzt")
             for url, content in neu_pdf_texte:
                 if content:
                     text_bulk += f"\n--- URL: {url} ---\n{content}"
@@ -438,13 +424,13 @@ def assemble_text(ort, html_pages, pdf_pages, limit):
             t = extract_pdf_text(url, 1)
             probe_texte.append((url, t))
         if sum(len(t) for _, t in probe_texte) <= verbleibend:
-            print(f"  ⚠️  Textlimit bei {ort} – {verworfen} älteste PDF(s) verworfen (mögl. Datenverlust)")
+            print(f"  ⚠️  Textlimit bei {ort} – {verworfen} älteste PDF(s) verworfen")
             for url, content in probe_texte:
                 if content:
                     text_bulk += f"\n--- URL: {url} ---\n{content}"
             return text_bulk, hat_gekuerzt, True
 
-    print(f"  ⚠️  Textlimit bei {ort} – nur noch Prio-PDFs mit je 1 Seite berücksichtigt")
+    print(f"  ⚠️  Textlimit bei {ort} – nur noch Prio-PDFs mit je 1 Seite")
     for url, _ in prio_pdfs:
         content = extract_pdf_text(url, 1)
         if content and len(text_bulk) + len(content) < limit:
@@ -466,15 +452,21 @@ def normalize_url(raw_url, start_url):
 
 
 # =====================================================================
-# --- 5. KI ANALYSE mit Exponential Backoff ---
+# --- 5. KI ANALYSE mit Exponential Backoff (google.genai SDK) ---
 # =====================================================================
 def _call_gemini_with_retry(prompt, est_tokens):
     retries = CONFIG["gemini_retries"]
     delays  = CONFIG["gemini_retry_delays"]
     for versuch in range(retries + 1):
         try:
-            response = model.generate_content(prompt)
-            used = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else est_tokens
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            used = response.usage_metadata.prompt_token_count if response.usage_metadata else est_tokens
             api_guard.update_usage(used)
             return response
         except Exception as e:
@@ -521,9 +513,6 @@ def analyze_with_gemini(gesammelter_text, start_url):
         - Jede Maßnahme MUSS ein Start- oder Enddatum haben.
         - "quelle_url": Gib IMMER eine vollständige absolute URL an, die mit http:// oder https:// beginnt.
           Die Basis-Domain lautet: {base_url}
-          Beispiel korrekt:   {base_url}/projekte/strassenbau-2026
-          Beispiel FALSCH:    /projekte/strassenbau-2026
-          Beispiel FALSCH:    {base_url}
           Bei mehreren URLs zur selben Maßnahme: wähle die mit dem konkretesten Inhalt.
         - Gibt es Dopplungen (gleiche Maßnahme, verschiedene URLs): nur einmal ausgeben.
 
@@ -607,9 +596,8 @@ def run_crawler():
             update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
 
             targets_processed += 1
-            html_pages, pdf_pages, skipped_urls = get_subpages(start_url, CONFIG["max_subpages"])
+            html_pages, pdf_pages, skipped_urls, status_log = get_subpages(start_url, CONFIG["max_subpages"])
 
-            # Übersprungene URLs ins dedizierte Log schreiben
             write_skipped_urls(ort, skipped_urls)
             if skipped_urls:
                 log_event("🔗", f"{len(skipped_urls)} URL(s) per Dedup übersprungen für {ort} → siehe {SKIPPED_LOG_FILE}")
@@ -619,8 +607,11 @@ def run_crawler():
             )
 
             if not text_bulk.strip():
-                log_event("⚠️", f"Kein Text für {ort} gefunden.")
-                update_live_log(ort, "⚠️ Kein Text gefunden")
+                # Fehlergrund aus status_log ermitteln
+                fehler_codes = set(status_log.values())
+                fehler_info  = ", ".join(str(c) for c in sorted(fehler_codes, key=str))
+                log_event("⚠️", f"Kein Text für {ort} gefunden. Status-Codes: [{fehler_info}]")
+                update_live_log(ort, f"⚠️ Kein Text [{fehler_info}]")
                 cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
                                (datetime.now(), ags))
                 conn.commit()
