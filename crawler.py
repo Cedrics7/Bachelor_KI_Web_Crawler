@@ -8,6 +8,7 @@ import time
 import threading
 import requests
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+from collections import deque
 from datetime import datetime, date
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -33,7 +34,7 @@ CONFIG = {
     "timeout_seconds": 10,
     "sleep_between_targets": 2,
     "min_end_datum": str(date.today()),
-    "max_text_chars": 150_000,
+    "max_text_chars": 500_000,
     "ziel_kategorien": {
         "Sanierung": ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
         "Neubau": ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
@@ -50,54 +51,69 @@ model = genai.GenerativeModel(
 )
 
 # =====================================================================
-# --- 2. API LIMIT MANAGER ---
+# --- 2. API LIMIT MANAGER (Rolling Window) ---
 # =====================================================================
 class TokenManager:
-    def __init__(self, rpm=12, tpm=200000, rpd=480):
-        self.rpm_limit = rpm
-        self.tpm_limit = tpm
-        self.rpd_limit = rpd
-        self.requests_this_minute = 0
-        self.tokens_this_minute = 0
+    """
+    Verwaltet Gemini API-Limits mit echtem Rolling-Window (60s).
+    Statt einem festen Minuten-Reset wird für jeden Request der
+    genaue Timestamp gespeichert. Requests/Tokens älter als 60s
+    werden automatisch aus dem Fenster entfernt.
+    """
+    def __init__(self, rpm=12, tpm=200_000, rpd=480):
+        self.rpm_limit  = rpm
+        self.tpm_limit  = tpm
+        self.rpd_limit  = rpd
+        # Rolling-Window-Queues: speichern (timestamp, tokens) pro Request
+        self.window     = deque()   # (float timestamp, int tokens)
         self.requests_today = 0
-        self.minute_start_time = datetime.now()
         self.day_start_time = date.today()
 
+    def _evict_old(self):
+        """Entfernt Einträge die älter als 60 Sekunden sind."""
+        cutoff = time.monotonic() - 60.0
+        while self.window and self.window[0][0] < cutoff:
+            self.window.popleft()
+
+    def _current_rpm(self):
+        return len(self.window)
+
+    def _current_tpm(self):
+        return sum(tokens for _, tokens in self.window)
+
     def check_limits(self, estimated_tokens):
+        # Einzelner Request überschreitet das TPM-Limit alleine → überspringen
         if estimated_tokens >= self.tpm_limit:
-            print(f"!!! WARNUNG: Prompt zu groß ({estimated_tokens} Tokens), wird gekürzt oder übersprungen!")
+            print(f"!!! WARNUNG: Prompt zu groß ({estimated_tokens} Tokens) – übersprungen!")
+            return False
+
+        # Tageslimit prüfen & ggf. zurücksetzen
+        if date.today() > self.day_start_time:
+            self.requests_today = 0
+            self.day_start_time = date.today()
+        if self.requests_today >= self.rpd_limit:
+            print("!!! Tageslimit (RPD) erreicht.")
             return False
 
         while True:
-            now = datetime.now()
-            if date.today() > self.day_start_time:
-                self.requests_today = 0
-                self.day_start_time = date.today()
-
-            elapsed = (now - self.minute_start_time).seconds
-            if elapsed >= 60:
-                self.requests_this_minute = 0
-                self.tokens_this_minute = 0
-                self.minute_start_time = now
-
-            if self.requests_today >= self.rpd_limit:
-                print("!!! Tageslimit erreicht.")
-                return False
-
-            rpm_ok = self.requests_this_minute < self.rpm_limit
-            tpm_ok = self.tokens_this_minute + estimated_tokens < self.tpm_limit
+            self._evict_old()
+            rpm_ok = self._current_rpm()  < self.rpm_limit
+            tpm_ok = self._current_tpm() + estimated_tokens < self.tpm_limit
 
             if rpm_ok and tpm_ok:
                 return True
 
-            wait_time = max(65 - elapsed, 1)
-            reason = "RPM" if not rpm_ok else "TPM"
-            print(f"--- API Schutz ({reason}): Pause für {wait_time}s ---")
-            time.sleep(wait_time)
+            # Berechne wie lange bis der älteste Request aus dem Fenster fällt
+            oldest_ts  = self.window[0][0] if self.window else time.monotonic()
+            wait_secs  = max((oldest_ts + 61.0) - time.monotonic(), 1.0)
+            reason     = "RPM" if not rpm_ok else "TPM"
+            rpm_info   = f"{self._current_rpm()}/{self.rpm_limit} RPM"
+            tpm_info   = f"{self._current_tpm():,}/{self.tpm_limit:,} TPM"
+            print(f"--- API Schutz ({reason}): {rpm_info}  {tpm_info}  → warte {wait_secs:.1f}s ---")
+            time.sleep(wait_secs)
 
     def update_usage(self, token_count):
-        self.requests_this_minute += 1
-        self.tokens_this_minute += token_count
+        self.window.append((time.monotonic(), token_count))
         self.requests_today += 1
 
 
@@ -192,12 +208,11 @@ def extract_pdf_text(url, max_pages):
                 if year < 2024:
                     print(f"      - Ignoriere altes PDF ({year})")
                     return ""
-
             text = ""
             for page in doc[:max_pages]:
                 text += page.get_text()
             return text
-    except Exception as e:
+    except Exception:
         return ""
 
 
@@ -220,9 +235,9 @@ def is_relevant_url(url):
 def get_subpages(start_url, max_pages):
     visited, to_visit = set(), [start_url]
     html_collected = []
-    pdf_collected = []
-    base_domain = urlparse(start_url).netloc
-    prio_keywords = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
+    pdf_collected  = []
+    base_domain    = urlparse(start_url).netloc
+    prio_keywords  = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
 
     while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
         curr = to_visit.pop(0)
@@ -230,7 +245,8 @@ def get_subpages(start_url, max_pages):
         visited.add(curr)
 
         try:
-            resp = requests.get(curr, timeout=CONFIG["timeout_seconds"], headers={'User-Agent': 'BachelorCrawler/1.0'})
+            resp = requests.get(curr, timeout=CONFIG["timeout_seconds"],
+                                headers={'User-Agent': 'BachelorCrawler/1.0'})
             if resp.status_code == 200:
                 if curr.lower().endswith(".pdf"):
                     print(f"  - Scanne PDF: {curr[:50]}...")
@@ -240,11 +256,12 @@ def get_subpages(start_url, max_pages):
                 else:
                     text = extract_main_text(resp.text)
                     html_collected.append((curr, text))
-
                     soup = BeautifulSoup(resp.text, "html.parser")
                     for link in soup.find_all('a', href=True):
                         nxt = urljoin(start_url, link['href'])
-                        if urlparse(nxt).netloc == base_domain and is_relevant_url(nxt) and nxt not in visited:
+                        if (urlparse(nxt).netloc == base_domain
+                                and is_relevant_url(nxt)
+                                and nxt not in visited):
                             if any(p in nxt.lower() for p in prio_keywords):
                                 to_visit.insert(0, nxt)
                             else:
@@ -258,15 +275,14 @@ def get_subpages(start_url, max_pages):
 # =====================================================================
 # --- 4. KI ANALYSE ---
 # =====================================================================
-
 def analyze_with_gemini(gesammelter_text):
-    # Text auf max_text_chars kürzen um TPM-Limit nicht zu sprengen
     if len(gesammelter_text) > CONFIG["max_text_chars"]:
-        print(f"  ⚠️  Text gekürzt: {len(gesammelter_text)} → {CONFIG['max_text_chars']} Zeichen")
+        print(f"  ⚠️  Text gekürzt: {len(gesammelter_text):,} → {CONFIG['max_text_chars']:,} Zeichen")
         gesammelter_text = gesammelter_text[:CONFIG["max_text_chars"]]
 
     est_tokens = len(gesammelter_text) // 4
-    if not api_guard.check_limits(est_tokens): return []
+    if not api_guard.check_limits(est_tokens):
+        return []
 
     kategorien_string = json.dumps(CONFIG["ziel_kategorien"], ensure_ascii=False, indent=2)
 
@@ -288,7 +304,7 @@ def analyze_with_gemini(gesammelter_text):
         WICHTIG:
         - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
         - Jede Maßnahme MUSS ein Start- oder Enddatum haben.
-        - "quelle_url": Gib AUSSCHLIEßLICH die spezifische URL der Unterseite an, auf der diese Maßnahme
+        - "quelle_url": Gib AUSSCHLIEssLICH die spezifische URL der Unterseite an, auf der diese Maßnahme
           beschrieben wird (z.B. /projekte/strassenbau-2026). NIEMALS die Startseite oder Domain allein.
           Bei mehreren URLs zur selben Maßnahme: wähle die mit dem konkretesten Inhalt.
         - Gibt es Dopplungen (gleiche Maßnahme, verschiedene URLs): nur einmal ausgeben, mit der spezifischsten URL.
@@ -314,7 +330,6 @@ def analyze_with_gemini(gesammelter_text):
         response = model.generate_content(prompt)
         used = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else est_tokens
         api_guard.update_usage(used)
-
         raw = response.text.replace("```json", "").replace("```", "").strip()
         return json.loads(raw).get("massnahmen", [])
     except:
@@ -335,25 +350,28 @@ def is_duplicate(cursor, ags, massnahme, massnahme_start):
     return cursor.fetchone() is not None
 
 
+# =====================================================================
 # --- 6. MAIN LOOP ---
+# =====================================================================
 def run_crawler():
     _heartbeat_stop.clear()
     heartbeat = threading.Thread(target=_heartbeat_worker, daemon=True)
     heartbeat.start()
 
-    conn = get_db_connection()
+    conn   = get_db_connection()
     cursor = conn.cursor()
 
     targets_processed = 0
-    total_funde = 0
-    start_zeit_dt = datetime.now()
+    total_funde       = 0
+    start_zeit_dt     = datetime.now()
 
     write_history_log("START", f"Beginne Durchlauf mit max. {CONFIG['max_targets']} Targets.")
 
-    cursor.execute("SELECT ags, url, ort FROM crawl_targets ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
-                   (CONFIG["max_targets"],))
-    targets = cursor.fetchall()
-
+    cursor.execute(
+        "SELECT ags, url, ort FROM crawl_targets ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
+        (CONFIG["max_targets"],)
+    )
+    targets   = cursor.fetchall()
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
 
     try:
@@ -368,13 +386,14 @@ def run_crawler():
 
             text_bulk = ""
             for url, content in pages:
-                if content and len(text_bulk) + len(content) < 500000:
+                if content and len(text_bulk) + len(content) < 500_000:
                     text_bulk += f"\n--- URL: {url} ---\n{content}"
 
             if not text_bulk.strip():
                 log_event("⚠️", f"Kein Text für {ort} gefunden.")
                 update_live_log(ort, "⚠️ Kein Text gefunden")
-                cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (datetime.now(), ags))
+                cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
+                               (datetime.now(), ags))
                 conn.commit()
                 continue
 
@@ -389,21 +408,22 @@ def run_crawler():
                 update_live_log(ort, "🤖 Gemini Analyse...")
                 found = analyze_with_gemini(text_bulk)
 
-                valid_count = 0
-                skipped_dups = 0
+                valid_count   = 0
+                skipped_dups  = 0
                 for item in found:
                     m_start = item.get("massnahme_start")
                     m_ende  = item.get("massnahme_ende")
                     m_name  = item.get("massnahme")
 
-                    if not m_start and not m_ende: continue
+                    if not m_start and not m_ende:
+                        continue
                     if m_ende:
                         try:
-                            if datetime.strptime(m_ende, "%Y-%m-%d").date() < min_datum: continue
+                            if datetime.strptime(m_ende, "%Y-%m-%d").date() < min_datum:
+                                continue
                         except:
                             pass
 
-                    # Duplikat-Check auf Maßnahmen-Ebene
                     if is_duplicate(cursor, ags, m_name, m_start):
                         skipped_dups += 1
                         log_event("🔄", f"Duplikat übersprungen: {m_name}")
@@ -425,10 +445,12 @@ def run_crawler():
                     ))
 
                 total_funde += valid_count
-                log_event("✅", f"Analyse beendet: {valid_count} neue Funde, {skipped_dups} Duplikate übersprungen für {ort}.")
+                log_event("✅", f"Analyse beendet: {valid_count} neue Funde, "
+                               f"{skipped_dups} Duplikate übersprungen für {ort}.")
                 update_live_log(ort, f"✅ Fertig: {valid_count} Funde", funde=valid_count)
 
-            cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (datetime.now(), ags))
+            cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
+                           (datetime.now(), ags))
             conn.commit()
             time.sleep(CONFIG["sleep_between_targets"])
 
@@ -438,7 +460,8 @@ def run_crawler():
 
     dauer = datetime.now() - start_zeit_dt
     minuten, sekunden = divmod(dauer.seconds, 60)
-    summary = f"Beendet. {targets_processed} Orte gescannt, {total_funde} Funde. Dauer: {minuten}m {sekunden}s."
+    summary = (f"Beendet. {targets_processed} Orte gescannt, "
+               f"{total_funde} Funde. Dauer: {minuten}m {sekunden}s.")
 
     write_history_log("ENDE ", summary)
     log_event("🏁", summary)
