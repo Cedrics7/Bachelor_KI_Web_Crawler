@@ -34,7 +34,10 @@ CONFIG = {
     "max_pdf_pages": 5,
     "timeout_seconds": 10,
     "sleep_between_targets": 2,
+    # Filter: Maßnahmen deren Enddatum vor diesem Datum liegt werden ignoriert
     "min_end_datum": str(date.today()),
+    # Filter: PDFs deren Erstellungsjahr älter als dieser Wert ist werden ignoriert
+    "min_pdf_year": 2024,
     "max_text_chars": 500_000,
     "gemini_retries": 3,           # Maximale Wiederholungen bei 503/504
     "gemini_retry_delays": [10, 30, 60],  # Wartezeit in Sekunden pro Versuch
@@ -219,7 +222,7 @@ def extract_pdf_text(url, max_pages):
             c_date = meta.get("creationDate", "")
             if c_date.startswith("D:"):
                 year = int(c_date[2:6])
-                if year < 2024:
+                if year < CONFIG["min_pdf_year"]:
                     print(f"      - Ignoriere altes PDF ({year})")
                     return ""
             text = ""
@@ -346,13 +349,11 @@ def assemble_text(ort, html_pages, pdf_pages, limit):
         hat_gekuerzt = True
 
     # --- Schritt 4: Älteste PDFs verwerfen bis es passt ---
-    # Prio-PDFs niemals verwerfen, normale PDFs nach Jahr aufsteigend (älteste zuerst raus)
     normale_pdfs_sortiert = sorted(normale_pdfs, key=lambda x: get_pdf_year(x[0]))
     verbleibende_pdfs     = list(prio_pdfs) + list(normale_pdfs_sortiert)
     verworfen             = 0
 
     while verbleibende_pdfs:
-        # Ältestes normales PDF entfernen (hinten in prio_pdfs, vorne in normale_pdfs_sortiert)
         entfernt = False
         for i in range(len(verbleibende_pdfs) - 1, -1, -1):
             url, _ = verbleibende_pdfs[i]
@@ -364,7 +365,6 @@ def assemble_text(ort, html_pages, pdf_pages, limit):
         if not entfernt:
             break  # Nur noch Prio-PDFs übrig – nicht mehr verwerfen
 
-        # Mit 1 Seite pro verbleibendem PDF neu berechnen
         probe_texte = []
         for url, _ in verbleibende_pdfs:
             t = extract_pdf_text(url, 1)
