@@ -35,6 +35,8 @@ CONFIG = {
     "sleep_between_targets": 2,
     "min_end_datum": str(date.today()),
     "max_text_chars": 500_000,
+    "gemini_retries": 3,           # Maximale Wiederholungen bei 503/504
+    "gemini_retry_delays": [10, 30, 60],  # Wartezeit in Sekunden pro Versuch
     "ziel_kategorien": {
         "Sanierung": ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
         "Neubau": ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
@@ -141,20 +143,13 @@ def write_history_log(event_type, message):
 
 
 def reset_live_log_if_new_day():
-    """
-    Wird beim Start von run_crawler() aufgerufen.
-    Setzt letzte_funde auf 0 zurück wenn das gespeicherte Datum nicht mehr heute ist.
-    """
     status_file = "crawler_live_status.json"
     heute_str   = datetime.now().strftime("%Y-%m-%d")
-
     if not os.path.exists(status_file):
         return
-
     try:
         with open(status_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-
         if not data.get("timestamp", "").startswith(heute_str):
             data["letzte_funde"] = 0
             data["timestamp"]    = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -169,17 +164,14 @@ def update_live_log(ort, status, funde=0, gespart=False):
     status_file        = "crawler_live_status.json"
     heute_str          = datetime.now().strftime("%Y-%m-%d")
     gesamt_funde_heute = funde
-
     if os.path.exists(status_file):
         try:
             with open(status_file, "r", encoding="utf-8") as f:
                 old_data = json.load(f)
-            # Nur aufaddieren wenn Eintrag von heute ist
             if old_data.get("timestamp", "").startswith(heute_str):
                 gesamt_funde_heute += old_data.get("letzte_funde", 0)
         except Exception as e:
             print(f"Fehler beim Lesen des Status-Files: {e}")
-
     with open(status_file, "w", encoding="utf-8") as f:
         json.dump({
             "timestamp":     datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
@@ -258,7 +250,6 @@ def get_subpages(start_url, max_pages):
         if curr in visited:
             continue
         visited.add(curr)
-
         try:
             resp = requests.get(curr, timeout=CONFIG["timeout_seconds"],
                                 headers={'User-Agent': 'BachelorCrawler/1.0'})
@@ -283,7 +274,6 @@ def get_subpages(start_url, max_pages):
                                 to_visit.append(nxt)
         except:
             continue
-
     return html_collected + pdf_collected
 
 
@@ -291,11 +281,6 @@ def get_subpages(start_url, max_pages):
 # --- 4. URL-NORMALISIERUNG ---
 # =====================================================================
 def normalize_url(raw_url, start_url):
-    """
-    Stellt sicher dass quelle_url eine vollständige absolute URL ist.
-    Relative Pfade (z.B. /bebauungsplan-xyz) werden mit der
-    Basis-Domain des Targets vervollständigt.
-    """
     if not raw_url:
         return start_url
     parsed = urlparse(raw_url)
@@ -305,8 +290,41 @@ def normalize_url(raw_url, start_url):
 
 
 # =====================================================================
-# --- 5. KI ANALYSE ---
+# --- 5. KI ANALYSE mit Exponential Backoff ---
 # =====================================================================
+def _call_gemini_with_retry(prompt, est_tokens):
+    """
+    Führt den Gemini-API-Aufruf durch.
+    Bei 503 ServiceUnavailable oder 504 GatewayTimeout wird automatisch
+    mit Exponential Backoff wiederholt (nur lokaler print, kein Log/Verlauf).
+    """
+    retries = CONFIG["gemini_retries"]
+    delays  = CONFIG["gemini_retry_delays"]
+
+    for versuch in range(retries + 1):
+        try:
+            response = model.generate_content(prompt)
+            used = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else est_tokens
+            api_guard.update_usage(used)
+            return response
+        except Exception as e:
+            fehler_str = str(e)
+            # 503 / 504 → Retry mit Backoff
+            if any(code in fehler_str for code in ["503", "504", "ServiceUnavailable", "GatewayTimeout"]):
+                if versuch < retries:
+                    wait = delays[versuch]
+                    print(f"  ⚠️  Gemini {fehler_str[:30].strip()} – Versuch {versuch + 1}/{retries}, warte {wait}s ...")
+                    time.sleep(wait)
+                else:
+                    print(f"  ❌  Gemini nach {retries} Versuchen nicht erreichbar – übersprungen.")
+                    return None
+            else:
+                # Andere Fehler (z.B. 429, JSON-Fehler) – sofort abbrechen
+                print(f"  ❌  Gemini-Fehler (kein Retry): {fehler_str[:80]}")
+                return None
+    return None
+
+
 def analyze_with_gemini(gesammelter_text, start_url):
     if len(gesammelter_text) > CONFIG["max_text_chars"]:
         print(f"  ⚠️  Text gekürzt: {len(gesammelter_text):,} → {CONFIG['max_text_chars']:,} Zeichen")
@@ -362,18 +380,19 @@ def analyze_with_gemini(gesammelter_text, start_url):
         Texte zum Analysieren:
         {gesammelter_text}
         """
-    try:
-        response = model.generate_content(prompt)
-        used = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else est_tokens
-        api_guard.update_usage(used)
-        raw = response.text.replace("```json", "").replace("```", "").strip()
-        massnahmen = json.loads(raw).get("massnahmen", [])
 
+    response = _call_gemini_with_retry(prompt, est_tokens)
+    if response is None:
+        return []
+
+    try:
+        raw        = response.text.replace("```json", "").replace("```", "").strip()
+        massnahmen = json.loads(raw).get("massnahmen", [])
         for item in massnahmen:
             item["quelle_url"] = normalize_url(item.get("quelle_url"), start_url)
-
         return massnahmen
-    except:
+    except Exception as e:
+        print(f"  ❌  JSON-Parsing fehlgeschlagen: {e}")
         return []
 
 
@@ -381,12 +400,9 @@ def analyze_with_gemini(gesammelter_text, start_url):
 # --- 6. DUPLIKAT-PRÜFUNG auf Maßnahmen-Ebene ---
 # =====================================================================
 def is_duplicate(cursor, ags, massnahme, massnahme_start):
-    """Gibt True zurück wenn diese Maßnahme für diesen Ort bereits existiert."""
     cursor.execute("""
         SELECT id FROM crawl_results
-        WHERE ags = %s
-          AND massnahme = %s
-          AND massnahme_start = %s
+        WHERE ags = %s AND massnahme = %s AND massnahme_start = %s
     """, (ags, massnahme, massnahme_start))
     return cursor.fetchone() is not None
 
@@ -395,7 +411,6 @@ def is_duplicate(cursor, ags, massnahme, massnahme_start):
 # --- 7. MAIN LOOP ---
 # =====================================================================
 def run_crawler():
-    # Livelog-Funde zurücksetzen wenn neuer Tag
     reset_live_log_if_new_day()
 
     _heartbeat_stop.clear()
