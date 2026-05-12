@@ -67,7 +67,7 @@ SKIPPED_LOG_FILE = "crawler_skipped_urls.log"
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-GEMINI_MODEL = "gemini-2.5-flash-preview-04-17"
+GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
 # =====================================================================
 # --- 2. API LIMIT MANAGER (Rolling Window) ---
@@ -320,7 +320,7 @@ def get_subpages(start_url, max_pages):
     html_collected = []
     pdf_collected  = []
     skipped_urls   = []
-    status_log     = {}   # url -> HTTP-Statuscode oder Fehlertext für Diagnose
+    status_log     = {}
     base_domain    = urlparse(start_url).netloc
     prio_keywords  = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
 
@@ -338,6 +338,20 @@ def get_subpages(start_url, max_pages):
             resp = requests.get(curr, timeout=CONFIG["timeout_seconds"],
                                 headers={'User-Agent': 'BachelorCrawler/1.0'})
             status_log[curr] = resp.status_code
+
+            # Nach Redirect: finale URL ebenfalls als besucht markieren
+            # Verhindert dass z.B. /planen-bauen und /planen-bauen/ doppelt gecrawlt werden,
+            # aber NICHT dass /planen-bauen/baumassnahmen uebersprungen wird.
+            if resp.url != curr:
+                final_base = get_url_base(resp.url)
+                if final_base in visited_base and final_base != curr_base:
+                    # Redirect-Ziel war schon besucht -> diesen Request verwerfen
+                    skipped_urls.append(curr)
+                    visited_base.discard(curr_base)  # curr_base wieder freigeben
+                    continue
+                visited_base.add(final_base)
+                visited_full.add(resp.url)
+
             if resp.status_code == 200:
                 if curr.lower().endswith(".pdf"):
                     print(f"  - Scanne PDF: {curr[:50]}...")
@@ -607,7 +621,6 @@ def run_crawler():
             )
 
             if not text_bulk.strip():
-                # Fehlergrund aus status_log ermitteln
                 fehler_codes = set(status_log.values())
                 fehler_info  = ", ".join(str(c) for c in sorted(fehler_codes, key=str))
                 log_event("⚠️", f"Kein Text für {ort} gefunden. Status-Codes: [{fehler_info}]")
