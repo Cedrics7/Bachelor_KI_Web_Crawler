@@ -56,21 +56,16 @@ model = genai.GenerativeModel(
 class TokenManager:
     """
     Verwaltet Gemini API-Limits mit echtem Rolling-Window (60s).
-    Statt einem festen Minuten-Reset wird für jeden Request der
-    genaue Timestamp gespeichert. Requests/Tokens älter als 60s
-    werden automatisch aus dem Fenster entfernt.
     """
     def __init__(self, rpm=12, tpm=200_000, rpd=480):
-        self.rpm_limit  = rpm
-        self.tpm_limit  = tpm
-        self.rpd_limit  = rpd
-        # Rolling-Window-Queues: speichern (timestamp, tokens) pro Request
-        self.window     = deque()   # (float timestamp, int tokens)
+        self.rpm_limit      = rpm
+        self.tpm_limit      = tpm
+        self.rpd_limit      = rpd
+        self.window         = deque()  # (float timestamp, int tokens)
         self.requests_today = 0
         self.day_start_time = date.today()
 
     def _evict_old(self):
-        """Entfernt Einträge die älter als 60 Sekunden sind."""
         cutoff = time.monotonic() - 60.0
         while self.window and self.window[0][0] < cutoff:
             self.window.popleft()
@@ -82,12 +77,10 @@ class TokenManager:
         return sum(tokens for _, tokens in self.window)
 
     def check_limits(self, estimated_tokens):
-        # Einzelner Request überschreitet das TPM-Limit alleine → überspringen
         if estimated_tokens >= self.tpm_limit:
             print(f"!!! WARNUNG: Prompt zu groß ({estimated_tokens} Tokens) – übersprungen!")
             return False
 
-        # Tageslimit prüfen & ggf. zurücksetzen
         if date.today() > self.day_start_time:
             self.requests_today = 0
             self.day_start_time = date.today()
@@ -97,18 +90,17 @@ class TokenManager:
 
         while True:
             self._evict_old()
-            rpm_ok = self._current_rpm()  < self.rpm_limit
+            rpm_ok = self._current_rpm() < self.rpm_limit
             tpm_ok = self._current_tpm() + estimated_tokens < self.tpm_limit
 
             if rpm_ok and tpm_ok:
                 return True
 
-            # Berechne wie lange bis der älteste Request aus dem Fenster fällt
-            oldest_ts  = self.window[0][0] if self.window else time.monotonic()
-            wait_secs  = max((oldest_ts + 61.0) - time.monotonic(), 1.0)
-            reason     = "RPM" if not rpm_ok else "TPM"
-            rpm_info   = f"{self._current_rpm()}/{self.rpm_limit} RPM"
-            tpm_info   = f"{self._current_tpm():,}/{self.tpm_limit:,} TPM"
+            oldest_ts = self.window[0][0] if self.window else time.monotonic()
+            wait_secs = max((oldest_ts + 61.0) - time.monotonic(), 1.0)
+            reason    = "RPM" if not rpm_ok else "TPM"
+            rpm_info  = f"{self._current_rpm()}/{self.rpm_limit} RPM"
+            tpm_info  = f"{self._current_tpm():,}/{self.tpm_limit:,} TPM"
             print(f"--- API Schutz ({reason}): {rpm_info}  {tpm_info}  → warte {wait_secs:.1f}s ---")
             time.sleep(wait_secs)
 
@@ -138,7 +130,6 @@ def write_history_log(event_type, message):
     log_entry = f"[{zeit}] {event_type.upper()}: {message}\n"
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(log_entry)
-
     try:
         with open(log_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -158,22 +149,19 @@ def update_live_log(ort, status, funde=0, gespart=False):
         try:
             with open(status_file, "r", encoding="utf-8") as f:
                 old_data = json.load(f)
-                last_update = old_data.get("timestamp", "")
-                if last_update.startswith(heute_str):
+                if old_data.get("timestamp", "").startswith(heute_str):
                     gesamt_funde_heute += old_data.get("letzte_funde", 0)
         except Exception as e:
             print(f"Fehler beim Lesen des Status-Files: {e}")
 
-    log_data = {
-        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        "aktueller_ort": ort,
-        "status": status,
-        "letzte_funde": gesamt_funde_heute,
-        "hash_match": gespart
-    }
-
     with open(status_file, "w", encoding="utf-8") as f:
-        json.dump(log_data, f, ensure_ascii=False, indent=4)
+        json.dump({
+            "timestamp":    datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "aktueller_ort": ort,
+            "status":       status,
+            "letzte_funde": gesamt_funde_heute,
+            "hash_match":   gespart
+        }, f, ensure_ascii=False, indent=4)
 
 
 # =====================================================================
@@ -201,7 +189,7 @@ def extract_pdf_text(url, max_pages):
     try:
         response = requests.get(url, timeout=10)
         with fitz.open(stream=response.content, filetype="pdf") as doc:
-            meta = doc.metadata
+            meta   = doc.metadata
             c_date = meta.get("creationDate", "")
             if c_date.startswith("D:"):
                 year = int(c_date[2:6])
@@ -241,7 +229,8 @@ def get_subpages(start_url, max_pages):
 
     while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
         curr = to_visit.pop(0)
-        if curr in visited: continue
+        if curr in visited:
+            continue
         visited.add(curr)
 
         try:
@@ -273,9 +262,27 @@ def get_subpages(start_url, max_pages):
 
 
 # =====================================================================
-# --- 4. KI ANALYSE ---
+# --- 4. URL-NORMALISIERUNG ---
 # =====================================================================
-def analyze_with_gemini(gesammelter_text):
+def normalize_url(raw_url, start_url):
+    """
+    Stellt sicher dass quelle_url eine vollständige absolute URL ist.
+    Relative Pfade (z.B. /bebauungsplan-xyz) werden mit der
+    Basis-Domain des Targets vervollständigt.
+    """
+    if not raw_url:
+        return start_url
+    parsed = urlparse(raw_url)
+    if parsed.scheme in ('http', 'https'):
+        return raw_url  # bereits absolut
+    # relativ → mit start_url zusammenführen
+    return urljoin(start_url, raw_url)
+
+
+# =====================================================================
+# --- 5. KI ANALYSE ---
+# =====================================================================
+def analyze_with_gemini(gesammelter_text, start_url):
     if len(gesammelter_text) > CONFIG["max_text_chars"]:
         print(f"  ⚠️  Text gekürzt: {len(gesammelter_text):,} → {CONFIG['max_text_chars']:,} Zeichen")
         gesammelter_text = gesammelter_text[:CONFIG["max_text_chars"]]
@@ -284,6 +291,7 @@ def analyze_with_gemini(gesammelter_text):
     if not api_guard.check_limits(est_tokens):
         return []
 
+    base_url          = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
     kategorien_string = json.dumps(CONFIG["ziel_kategorien"], ensure_ascii=False, indent=2)
 
     prompt = f"""
@@ -304,10 +312,13 @@ def analyze_with_gemini(gesammelter_text):
         WICHTIG:
         - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
         - Jede Maßnahme MUSS ein Start- oder Enddatum haben.
-        - "quelle_url": Gib AUSSCHLIEssLICH die spezifische URL der Unterseite an, auf der diese Maßnahme
-          beschrieben wird (z.B. /projekte/strassenbau-2026). NIEMALS die Startseite oder Domain allein.
+        - "quelle_url": Gib IMMER eine vollständige absolute URL an, die mit http:// oder https:// beginnt.
+          Die Basis-Domain lautet: {base_url}
+          Beispiel korrekt:   {base_url}/projekte/strassenbau-2026
+          Beispiel FALSCH:    /projekte/strassenbau-2026
+          Beispiel FALSCH:    {base_url}
           Bei mehreren URLs zur selben Maßnahme: wähle die mit dem konkretesten Inhalt.
-        - Gibt es Dopplungen (gleiche Maßnahme, verschiedene URLs): nur einmal ausgeben, mit der spezifischsten URL.
+        - Gibt es Dopplungen (gleiche Maßnahme, verschiedene URLs): nur einmal ausgeben.
 
         Antworte im JSON-Format:
         {{
@@ -331,13 +342,19 @@ def analyze_with_gemini(gesammelter_text):
         used = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else est_tokens
         api_guard.update_usage(used)
         raw = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(raw).get("massnahmen", [])
+        massnahmen = json.loads(raw).get("massnahmen", [])
+
+        # Sicherheitsnetz: relative URLs nachträglich vervollständigen
+        for item in massnahmen:
+            item["quelle_url"] = normalize_url(item.get("quelle_url"), start_url)
+
+        return massnahmen
     except:
         return []
 
 
 # =====================================================================
-# --- 5. DUPLIKAT-PRÜFUNG auf Maßnahmen-Ebene ---
+# --- 6. DUPLIKAT-PRÜFUNG auf Maßnahmen-Ebene ---
 # =====================================================================
 def is_duplicate(cursor, ags, massnahme, massnahme_start):
     """Gibt True zurück wenn diese Maßnahme für diesen Ort bereits existiert."""
@@ -351,7 +368,7 @@ def is_duplicate(cursor, ags, massnahme, massnahme_start):
 
 
 # =====================================================================
-# --- 6. MAIN LOOP ---
+# --- 7. MAIN LOOP ---
 # =====================================================================
 def run_crawler():
     _heartbeat_stop.clear()
@@ -406,10 +423,10 @@ def run_crawler():
             else:
                 log_event("🤖", f"Sende Daten für {ort} an Gemini...")
                 update_live_log(ort, "🤖 Gemini Analyse...")
-                found = analyze_with_gemini(text_bulk)
+                found = analyze_with_gemini(text_bulk, start_url)
 
-                valid_count   = 0
-                skipped_dups  = 0
+                valid_count  = 0
+                skipped_dups = 0
                 for item in found:
                     m_start = item.get("massnahme_start")
                     m_ende  = item.get("massnahme_ende")
