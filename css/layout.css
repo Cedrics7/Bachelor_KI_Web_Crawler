@@ -21,8 +21,8 @@
     .kpi-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
-/* Seiten-Sichtbarkeit */
-.page-content.hidden { display: none; }
+/* Utility: Elemente verstecken — gilt für ALLE Elemente mit .hidden */
+.hidden { display: none !important; }
 
 /* Seiten-Header */
 .page-header {
