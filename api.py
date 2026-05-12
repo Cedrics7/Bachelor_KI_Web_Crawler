@@ -51,6 +51,37 @@ def get_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/bewegung_stats")
+def get_bewegung_stats():
+    """Gibt KPIs für Bewegungsdaten zurück: gesamt, diesen Monat, heute."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now = datetime.now()
+        first_day_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        cursor.execute("SELECT COUNT(*) FROM crawl_results WHERE massnahme IS NOT NULL")
+        total = cursor.fetchone()[0]
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM crawl_results WHERE massnahme IS NOT NULL AND gefunden_am >= %s",
+            (first_day_month,)
+        )
+        month = cursor.fetchone()[0]
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM crawl_results WHERE massnahme IS NOT NULL AND gefunden_am >= %s",
+            (today_start,)
+        )
+        today = cursor.fetchone()[0]
+
+        conn.close()
+        return {"total": total, "month": month, "today": today}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/bewegungsdaten")
 def get_bewegungsdaten(
     page: int = Query(1, ge=1),
@@ -83,7 +114,7 @@ def get_bewegungsdaten(
         order_direction = "ASC" if sort.lower() == "asc" else "DESC"
 
         query = f"""
-            SELECT r.massnahme, r.adresse, t.ort, r.massnahme_start, r.massnahme_ende,
+            SELECT r.id, r.massnahme, r.adresse, t.ort, r.massnahme_start, r.massnahme_ende,
                    r.massnahme_url, t.bundesland, r.kategorie, r.end_time, r.gefunden_am
             FROM crawl_results r
             LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text
@@ -98,8 +129,10 @@ def get_bewegungsdaten(
         for row in raw_items:
             item = dict(row)
             for k, v in item.items():
-                if isinstance(v, (datetime, date)):
-                    item[k] = v.strftime('%d.%m.%Y %H:%M') if isinstance(v, datetime) else v.strftime('%d.%m.%Y')
+                if isinstance(v, datetime):
+                    item[k] = v.strftime('%Y-%m-%dT%H:%M:%S')
+                elif isinstance(v, date):
+                    item[k] = v.strftime('%Y-%m-%d')
             items.append(item)
 
         cur.execute(f"SELECT COUNT(*) as count FROM crawl_results r LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text {where_clause}", params)
@@ -127,9 +160,10 @@ def get_bestandsdaten(
         page: int = Query(1, ge=1),
         page_size: int = Query(50, ge=1, le=500),
         search: str = Query(None),
-        status: str = Query("Alle")
+        status: str = Query("Alle"),
+        bundesland: str = Query("Alle")
 ):
-    """Liest die Bestandsdaten inkl. Pagination und Status-Filter."""
+    """Liest die Bestandsdaten inkl. Pagination, Status- und Bundesland-Filter."""
     try:
         conn = get_db_connection(as_dict=True)
         cur = conn.cursor()
@@ -144,6 +178,9 @@ def get_bestandsdaten(
             where_conditions.append("last_scanned IS NOT NULL")
         elif status == "Ausstehend":
             where_conditions.append("last_scanned IS NULL")
+        if bundesland != "Alle":
+            where_conditions.append("bundesland = %s")
+            params.append(bundesland)
 
         where_clause = ""
         if where_conditions:
@@ -167,6 +204,11 @@ def get_bestandsdaten(
 
         cur.execute(f"SELECT COUNT(*) as count FROM crawl_targets {where_clause}", params)
         total_count = cur.fetchone()['count']
+
+        # Bundesländer für Filter-Dropdown
+        cur.execute("SELECT DISTINCT bundesland FROM crawl_targets WHERE bundesland IS NOT NULL ORDER BY bundesland")
+        bl_list = [r['bundesland'] for r in cur.fetchall()]
+
         conn.close()
 
         return {
@@ -174,7 +216,8 @@ def get_bestandsdaten(
             "total_count": total_count,
             "page": page,
             "page_size": page_size,
-            "total_pages": (total_count + page_size - 1) // page_size
+            "total_pages": (total_count + page_size - 1) // page_size,
+            "filter_options": {"bundeslaender": bl_list}
         }
     except Exception as e:
         print(f"Fehler Bestandsdaten: {e}")

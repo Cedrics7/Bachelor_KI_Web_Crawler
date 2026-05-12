@@ -21,11 +21,20 @@ function _startKpiRefresh() {
     _kpiInterval = setInterval(_refreshKpis, 30_000);
 }
 async function _refreshKpis() {
-    try { const s = await fetchStats(); renderKPIs(s.total ?? 0, s.done ?? 0, s.pending ?? 0); } catch {}
+    const state = getState();
+    try {
+        if (state.page === 'bestandsdaten') {
+            const s = await fetchStats();
+            renderKPIs(s.total ?? 0, s.done ?? 0, s.pending ?? 0);
+        } else if (state.page === 'bewegungsdaten') {
+            const s = await fetchBewegungStats();
+            renderBewegKPIs(s.total ?? 0, s.month ?? 0, s.today ?? 0);
+        }
+    } catch {}
 }
 
 /* ----------------------------------------------------------
-   KPI-Sichtbarkeit je Seite
+   KPI-Sichtbarkeit je Seite — sofort aufrufen vor Datenladen
 ---------------------------------------------------------- */
 function _updateKpiVisibility(page) {
     const kpiBestand = document.getElementById('kpi-row');
@@ -81,6 +90,7 @@ async function render() {
         document.getElementById(`page-${pg}`)?.classList.toggle('hidden', pg !== state.page);
     });
 
+    /* KPI-Zeilen sofort ein-/ausblenden */
     _updateKpiVisibility(state.page);
 
     if (state.page === 'monitoring') _startMonitoringRefresh();
@@ -134,9 +144,9 @@ async function loadBewegungsdaten(state) {
         renderBewegTable(data.items);
         renderPagination('pagination-controls-beweg', state.p, data.total_pages ?? 1, 'goToPage');
         renderBewegKPIs(
-            bewegStats.total  ?? data.total_count ?? 0,
-            bewegStats.month  ?? 0,
-            bewegStats.today  ?? 0
+            bewegStats.total ?? 0,
+            bewegStats.month ?? 0,
+            bewegStats.today ?? 0
         );
 
         const opts = data.filter_options ?? {};
@@ -166,12 +176,11 @@ async function loadChangelog() {
 }
 
 /* ----------------------------------------------------------
-   Modal laden — Bewegungsdaten: alle Seiten durchsuchen
+   Modal laden
 ---------------------------------------------------------- */
 async function loadModal(id, idtype) {
     try {
         if (idtype === 'bewegung') {
-            /* Alle Seiten laden bis Eintrag gefunden */
             let found = null;
             for (let pg = 1; pg <= 20 && !found; pg++) {
                 const data = await fetchBewegungsdaten({ page: pg, page_size: 100 });
@@ -238,6 +247,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     _onSearchInput('filter-bestandsdaten-suche', 'search');
     _onSearchInput('filter-beweg-suche',         'search');
 
+    /* Initiale KPI-Sichtbarkeit sofort setzen (vor dem ersten render()) */
+    _updateKpiVisibility(getState().page);
+
     try {
         const clData   = await fetchChangelog();
         const versions = clData?.versions ?? [];
@@ -248,9 +260,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch {}
 
-    _refreshKpis();
     _startKpiRefresh();
-
     render();
 
     checkApiStatus().then(renderApiStatus);
