@@ -56,6 +56,8 @@ PDF_PRIO_KEYWORDS = [
     "vergabe", "foerderung", "förderung", "sanierung", "tiefbau"
 ]
 
+CONSOLE_LOG_FILE = "crawler_console.log"
+
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel(
@@ -132,9 +134,42 @@ def get_german_time():
     return datetime.now().strftime("%d.%m.%Y, %H:%M:%S")
 
 
+def _reset_console_log_if_new_month():
+    """
+    Setzt crawler_console.log am Monatsanfang zurück.
+    Schreibt einen Reset-Header in die neue Datei.
+    """
+    if not os.path.exists(CONSOLE_LOG_FILE):
+        return
+    try:
+        with open(CONSOLE_LOG_FILE, "r", encoding="utf-8") as f:
+            erste_zeile = f.readline()
+        # Ersten Zeitstempel aus dem Log lesen
+        match = re.search(r'\[(\d{2}\.\d{2}\.\d{4})', erste_zeile)
+        if match:
+            log_monat = datetime.strptime(match.group(1), "%d.%m.%Y").strftime("%Y-%m")
+            jetzt_monat = datetime.now().strftime("%Y-%m")
+            if log_monat != jetzt_monat:
+                with open(CONSOLE_LOG_FILE, "w", encoding="utf-8") as f:
+                    f.write(f"# Log-Reset: Neuer Monat ({jetzt_monat})\n")
+    except Exception as e:
+        print(f"Fehler beim Monats-Reset des Console-Logs: {e}")
+
+
+def _write_console_log(line: str):
+    """Schreibt eine Zeile in das Konsolen-Logfile."""
+    try:
+        with open(CONSOLE_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
 def log_event(emoji, message):
     zeit = get_german_time()
-    print(f"[{zeit}] {emoji} {message}")
+    line = f"[{zeit}] {emoji} {message}"
+    print(line)
+    _write_console_log(line)
 
 
 def write_history_log(event_type, message):
@@ -143,6 +178,7 @@ def write_history_log(event_type, message):
     log_entry = f"[{zeit}] {event_type.upper()}: {message}\n"
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(log_entry)
+    _write_console_log(log_entry.rstrip())
     try:
         with open(log_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -261,8 +297,20 @@ def is_relevant_url(url):
     return not any(kw in url.lower() for kw in ignore)
 
 
+def get_url_base(url):
+    """
+    Gibt die URL ohne Query-Parameter und Fragment zurück.
+    Verhindert, dass dieselbe Seite mit verschiedenen ?filter=... mehrfach gecrawlt wird.
+    Beispiel: https://example.de/baugebiete.html?fil=1 → https://example.de/baugebiete.html
+    """
+    parsed = urlparse(url)
+    return parsed._replace(query="", fragment="").geturl()
+
+
 def get_subpages(start_url, max_pages):
-    visited, to_visit = set(), [start_url]
+    visited_base = set()   # Normalisierte Basis-URLs (ohne Query/Fragment)
+    visited_full = set()   # Vollständige URLs für to_visit-Deduplikation
+    to_visit     = [start_url]
     html_collected = []
     pdf_collected  = []
     base_domain    = urlparse(start_url).netloc
@@ -270,9 +318,14 @@ def get_subpages(start_url, max_pages):
 
     while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
         curr = to_visit.pop(0)
-        if curr in visited:
+        curr_base = get_url_base(curr)
+
+        # Überspringe wenn Basis-URL bereits besucht
+        if curr_base in visited_base:
             continue
-        visited.add(curr)
+        visited_base.add(curr_base)
+        visited_full.add(curr)
+
         try:
             resp = requests.get(curr, timeout=CONFIG["timeout_seconds"],
                                 headers={'User-Agent': 'BachelorCrawler/1.0'})
@@ -287,10 +340,13 @@ def get_subpages(start_url, max_pages):
                     html_collected.append((curr, text))
                     soup = BeautifulSoup(resp.text, "html.parser")
                     for link in soup.find_all('a', href=True):
-                        nxt = urljoin(start_url, link['href'])
+                        nxt      = urljoin(start_url, link['href'])
+                        nxt_base = get_url_base(nxt)
                         if (urlparse(nxt).netloc == base_domain
                                 and is_relevant_url(nxt)
-                                and nxt not in visited):
+                                and nxt_base not in visited_base
+                                and nxt not in visited_full):
+                            visited_full.add(nxt)
                             if any(p in nxt.lower() for p in prio_keywords):
                                 to_visit.insert(0, nxt)
                             else:
@@ -341,299 +397,4 @@ def assemble_text(ort, html_pages, pdf_pages, limit):
         gesamt_neu = sum(len(t) for _, t in neu_pdf_texte)
         if gesamt_neu <= verbleibend:
             print(f"  ⚠️  Textlimit bei {ort} – PDFs auf {reduzierte_seiten} Seite(n) gekürzt "
-                  f"({len(neu_pdf_texte)} PDFs betroffen)")
-            for url, content in neu_pdf_texte:
-                if content:
-                    text_bulk += f"\n--- URL: {url} ---\n{content}"
-            return text_bulk, True, False
-        hat_gekuerzt = True
-
-    # --- Schritt 4: Älteste PDFs verwerfen bis es passt ---
-    normale_pdfs_sortiert = sorted(normale_pdfs, key=lambda x: get_pdf_year(x[0]))
-    verbleibende_pdfs     = list(prio_pdfs) + list(normale_pdfs_sortiert)
-    verworfen             = 0
-
-    while verbleibende_pdfs:
-        entfernt = False
-        for i in range(len(verbleibende_pdfs) - 1, -1, -1):
-            url, _ = verbleibende_pdfs[i]
-            if not is_prio_pdf(url):
-                verbleibende_pdfs.pop(i)
-                verworfen += 1
-                entfernt = True
-                break
-        if not entfernt:
-            break  # Nur noch Prio-PDFs übrig – nicht mehr verwerfen
-
-        probe_texte = []
-        for url, _ in verbleibende_pdfs:
-            t = extract_pdf_text(url, 1)
-            probe_texte.append((url, t))
-
-        if sum(len(t) for _, t in probe_texte) <= verbleibend:
-            print(f"  ⚠️  Textlimit bei {ort} – {verworfen} älteste PDF(s) verworfen (mögl. Datenverlust)")
-            for url, content in probe_texte:
-                if content:
-                    text_bulk += f"\n--- URL: {url} ---\n{content}"
-            return text_bulk, hat_gekuerzt, True
-
-    # Fallback: Prio-PDFs mit 1 Seite, Rest verworfen
-    print(f"  ⚠️  Textlimit bei {ort} – nur noch Prio-PDFs mit je 1 Seite berücksichtigt")
-    for url, _ in prio_pdfs:
-        content = extract_pdf_text(url, 1)
-        if content and len(text_bulk) + len(content) < limit:
-            text_bulk += f"\n--- URL: {url} ---\n{content}"
-
-    return text_bulk, True, True
-
-
-# =====================================================================
-# --- 4. URL-NORMALISIERUNG ---
-# =====================================================================
-def normalize_url(raw_url, start_url):
-    if not raw_url:
-        return start_url
-    parsed = urlparse(raw_url)
-    if parsed.scheme in ('http', 'https'):
-        return raw_url
-    return urljoin(start_url, raw_url)
-
-
-# =====================================================================
-# --- 5. KI ANALYSE mit Exponential Backoff ---
-# =====================================================================
-def _call_gemini_with_retry(prompt, est_tokens):
-    """
-    Führt den Gemini-API-Aufruf durch.
-    Bei 503 ServiceUnavailable oder 504 GatewayTimeout wird automatisch
-    mit Exponential Backoff wiederholt (nur lokaler print, kein Log/Verlauf).
-    """
-    retries = CONFIG["gemini_retries"]
-    delays  = CONFIG["gemini_retry_delays"]
-
-    for versuch in range(retries + 1):
-        try:
-            response = model.generate_content(prompt)
-            used = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else est_tokens
-            api_guard.update_usage(used)
-            return response
-        except Exception as e:
-            fehler_str = str(e)
-            # 503 / 504 → Retry mit Backoff
-            if any(code in fehler_str for code in ["503", "504", "ServiceUnavailable", "GatewayTimeout"]):
-                if versuch < retries:
-                    wait = delays[versuch]
-                    print(f"  ⚠️  Gemini {fehler_str[:30].strip()} – Versuch {versuch + 1}/{retries}, warte {wait}s ...")
-                    time.sleep(wait)
-                else:
-                    print(f"  ❌  Gemini nach {retries} Versuchen nicht erreichbar – übersprungen.")
-                    return None
-            else:
-                # Andere Fehler (z.B. 429, JSON-Fehler) – sofort abbrechen
-                print(f"  ❌  Gemini-Fehler (kein Retry): {fehler_str[:80]}")
-                return None
-    return None
-
-
-def analyze_with_gemini(gesammelter_text, start_url):
-    est_tokens = len(gesammelter_text) // 4
-    if not api_guard.check_limits(est_tokens):
-        return []
-
-    base_url          = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
-    kategorien_string = json.dumps(CONFIG["ziel_kategorien"], ensure_ascii=False, indent=2)
-
-    prompt = f"""
-        Du bist ein Experte für die Analyse kommunaler Ausschreibungen und Bauprojekte.
-
-        AUFGABE:
-        Extrahiere AUSSCHLIESSLICH echte Bau-, Infrastruktur- oder Sanierungsvorhaben.
-
-        STRIKTE AUSSCHLUSSKRITERIEN - Ignoriere folgende Themen komplett:
-        - Beschaffung von Fahrzeugen (LKW, Feuerwehrfahrzeuge, Busse etc.). Das ist KEIN Tiefbau!
-        - Kursangebote, Thermalbad-Termine, Wellness-Programme oder medizinische Kurpläne (z.B. "AGES Kur").
-        - Stellenausschreibungen oder reine Dienstleistungen (z.B. Winterdienst).
-        - Kulturelle Veranstaltungen, Feste oder Sitzungstermine.
-
-        KATEGORIEN:
-        {kategorien_string}
-
-        WICHTIG:
-        - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
-        - Jede Maßnahme MUSS ein Start- oder Enddatum haben.
-        - "quelle_url": Gib IMMER eine vollständige absolute URL an, die mit http:// oder https:// beginnt.
-          Die Basis-Domain lautet: {base_url}
-          Beispiel korrekt:   {base_url}/projekte/strassenbau-2026
-          Beispiel FALSCH:    /projekte/strassenbau-2026
-          Beispiel FALSCH:    {base_url}
-          Bei mehreren URLs zur selben Maßnahme: wähle die mit dem konkretesten Inhalt.
-        - Gibt es Dopplungen (gleiche Maßnahme, verschiedene URLs): nur einmal ausgeben.
-
-        Antworte im JSON-Format:
-        {{
-            "massnahmen": [
-                {{
-                    "kategorie": "...",
-                    "massnahme": "...",
-                    "adresse": "...",
-                    "massnahme_start": "YYYY-MM-DD",
-                    "massnahme_ende": "YYYY-MM-DD",
-                    "quelle_url": "..."
-                }}
-            ]
-        }}
-
-        Texte zum Analysieren:
-        {gesammelter_text}
-        """
-
-    response = _call_gemini_with_retry(prompt, est_tokens)
-    if response is None:
-        return []
-
-    try:
-        raw        = response.text.replace("```json", "").replace("```", "").strip()
-        massnahmen = json.loads(raw).get("massnahmen", [])
-        for item in massnahmen:
-            item["quelle_url"] = normalize_url(item.get("quelle_url"), start_url)
-        return massnahmen
-    except Exception as e:
-        print(f"  ❌  JSON-Parsing fehlgeschlagen: {e}")
-        return []
-
-
-# =====================================================================
-# --- 6. DUPLIKAT-PRÜFUNG auf Maßnahmen-Ebene ---
-# =====================================================================
-def is_duplicate(cursor, ags, massnahme, massnahme_start):
-    cursor.execute("""
-        SELECT id FROM crawl_results
-        WHERE ags = %s AND massnahme = %s AND massnahme_start = %s
-    """, (ags, massnahme, massnahme_start))
-    return cursor.fetchone() is not None
-
-
-# =====================================================================
-# --- 7. MAIN LOOP ---
-# =====================================================================
-def run_crawler():
-    reset_live_log_if_new_day()
-
-    _heartbeat_stop.clear()
-    heartbeat = threading.Thread(target=_heartbeat_worker, daemon=True)
-    heartbeat.start()
-
-    conn   = get_db_connection()
-    cursor = conn.cursor()
-
-    targets_processed = 0
-    total_funde       = 0
-    start_zeit_dt     = datetime.now()
-
-    write_history_log("START", f"Beginne Durchlauf mit max. {CONFIG['max_targets']} Targets.")
-
-    cursor.execute(
-        "SELECT ags, url, ort FROM crawl_targets ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
-        (CONFIG["max_targets"],)
-    )
-    targets   = cursor.fetchall()
-    min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
-
-    try:
-        for ags, start_url, ort in targets:
-            start_time = datetime.now()
-
-            log_event("🔍", f"Target: {ort} ({start_url})")
-            update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
-
-            targets_processed += 1
-            html_pages, pdf_pages = get_subpages(start_url, CONFIG["max_subpages"])
-
-            text_bulk, hat_gekuerzt, hat_verworfen = assemble_text(
-                ort, html_pages, pdf_pages, CONFIG["max_text_chars"]
-            )
-
-            if not text_bulk.strip():
-                log_event("⚠️", f"Kein Text für {ort} gefunden.")
-                update_live_log(ort, "⚠️ Kein Text gefunden")
-                cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
-                               (datetime.now(), ags))
-                conn.commit()
-                continue
-
-            content_hash = get_content_hash(text_bulk)
-            cursor.execute("SELECT id FROM crawl_results WHERE content_hash = %s", (content_hash,))
-
-            if cursor.fetchone():
-                log_event("🔒", f"Keine Änderungen in {ort} (Hash-Match).")
-                update_live_log(ort, "✅ Stand aktuell (Hash-Match)", gespart=True)
-            else:
-                log_event("🤖", f"Sende Daten für {ort} an Gemini...")
-                update_live_log(ort, "🤖 Gemini Analyse...")
-                found = analyze_with_gemini(text_bulk, start_url)
-
-                valid_count  = 0
-                skipped_dups = 0
-                for item in found:
-                    m_start = item.get("massnahme_start")
-                    m_ende  = item.get("massnahme_ende")
-                    m_name  = item.get("massnahme")
-
-                    if not m_start and not m_ende:
-                        continue
-                    if m_ende:
-                        try:
-                            if datetime.strptime(m_ende, "%Y-%m-%d").date() < min_datum:
-                                continue
-                        except:
-                            pass
-
-                    if is_duplicate(cursor, ags, m_name, m_start):
-                        skipped_dups += 1
-                        log_event("🔄", f"Duplikat übersprungen: {m_name}")
-                        continue
-
-                    valid_count += 1
-                    cursor.execute("""
-                        INSERT INTO crawl_results
-                            (ags, gefunden_am, start_time, end_time, status, kategorie,
-                             massnahme, adresse, massnahme_start, massnahme_ende,
-                             massnahme_url, content_hash)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        ags, datetime.now().strftime("%x"), start_time, datetime.now(),
-                        "Erfolgreich",
-                        item.get('kategorie'), m_name,
-                        item.get("adresse"), m_start, m_ende,
-                        item.get("quelle_url"), content_hash
-                    ))
-
-                total_funde += valid_count
-                log_event("✅", f"Analyse beendet: {valid_count} neue Funde, "
-                               f"{skipped_dups} Duplikate übersprungen für {ort}.")
-                update_live_log(ort, f"✅ Fertig: {valid_count} Funde", funde=valid_count)
-
-            cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
-                           (datetime.now(), ags))
-            conn.commit()
-            time.sleep(CONFIG["sleep_between_targets"])
-
-    finally:
-        _heartbeat_stop.set()
-        heartbeat.join(timeout=5)
-
-    dauer = datetime.now() - start_zeit_dt
-    minuten, sekunden = divmod(dauer.seconds, 60)
-    summary = (f"Beendet. {targets_processed} Orte gescannt, "
-               f"{total_funde} Funde. Dauer: {minuten}m {sekunden}s.")
-
-    write_history_log("ENDE ", summary)
-    log_event("🏁", summary)
-    update_live_log("Standby", f"🏁 Letzter Scan: {summary}")
-
-    cursor.close()
-    conn.close()
-
-
-if __name__ == "__main__":
-    run_crawler()
+                  f"({len(neu_pdf_texte)} PD
