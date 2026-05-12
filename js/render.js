@@ -49,12 +49,36 @@ function _katBadge(kat) {
 }
 
 /* ----------------------------------------------------------
-   KPI-Cards
+   Datum + Uhrzeit formatieren (DD.MM.YYYY HH:MM)
+---------------------------------------------------------- */
+function _formatDateTime(raw) {
+    if (!raw) return '-';
+    try {
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return esc(raw);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch {
+        return esc(raw);
+    }
+}
+
+/* ----------------------------------------------------------
+   KPI-Cards — Bestandsdaten
 ---------------------------------------------------------- */
 function renderKPIs(total, done, pending) {
     _animateNumber('kpi-total',   total);
     _animateNumber('kpi-done',    done);
     _animateNumber('kpi-pending', pending);
+}
+
+/* ----------------------------------------------------------
+   KPI-Cards — Bewegungsdaten
+---------------------------------------------------------- */
+function renderBewegKPIs(total, month, today) {
+    _animateNumber('kpi-beweg-total', total);
+    _animateNumber('kpi-beweg-month', month);
+    _animateNumber('kpi-beweg-today', today);
 }
 
 function _animateNumber(id, target) {
@@ -125,7 +149,7 @@ function renderBewegTable(items) {
             </td>
             <td>${esc(row.adresse ?? '-')}</td>
             <td>${_dateRange(row.massnahme_start, row.massnahme_ende)}</td>
-            <td>${esc(row.gefunden_am ?? row.end_time ?? '-')}</td>
+            <td>${_formatDateTime(row.gefunden_am ?? row.end_time)}</td>
             ${_srcCell(row.massnahme_url ?? '#', mode)}
         </tr>
     `).join('');
@@ -197,7 +221,7 @@ function renderModalBewegung(row) {
         ['Ort',         row.ort],
         ['Bundesland',  row.bundesland ?? '-'],
         ['Zeitraum',    _dateRange(row.massnahme_start, row.massnahme_ende)],
-        ['Gefunden am', row.gefunden_am ?? row.end_time ?? '-'],
+        ['Gefunden am', _formatDateTime(row.gefunden_am ?? row.end_time)],
         ['Quelle', row.massnahme_url
             ? `<a href="${esc(row.massnahme_url)}" target="_blank" rel="noopener noreferrer">${esc(row.massnahme_url)}</a>`
             : '-'],

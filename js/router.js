@@ -25,6 +25,16 @@ async function _refreshKpis() {
 }
 
 /* ----------------------------------------------------------
+   KPI-Sichtbarkeit je Seite
+---------------------------------------------------------- */
+function _updateKpiVisibility(page) {
+    const kpiBestand = document.getElementById('kpi-row');
+    const kpiBeweg   = document.getElementById('kpi-row-beweg');
+    if (kpiBestand) kpiBestand.classList.toggle('hidden', page !== 'bestandsdaten');
+    if (kpiBeweg)   kpiBeweg.classList.toggle('hidden',   page !== 'bewegungsdaten');
+}
+
+/* ----------------------------------------------------------
    URL-State
 ---------------------------------------------------------- */
 function getState() {
@@ -71,6 +81,8 @@ async function render() {
         document.getElementById(`page-${pg}`)?.classList.toggle('hidden', pg !== state.page);
     });
 
+    _updateKpiVisibility(state.page);
+
     if (state.page === 'monitoring') _startMonitoringRefresh();
     else _stopMonitoringRefresh();
 
@@ -97,12 +109,15 @@ async function render() {
 async function loadBestandsdaten(state) {
     try {
         const [data, stats] = await Promise.all([
-            fetchBestandsdaten({ page: state.p, search: state.search, status: state.status }),
+            fetchBestandsdaten({ page: state.p, search: state.search, status: state.status, bl: state.bl }),
             fetchStats(),
         ]);
         renderBestandsTable(data.items);
         renderPagination('pagination-controls', state.p, data.total_pages ?? 1, 'goToPage');
         renderKPIs(stats.total ?? 0, stats.done ?? 0, stats.pending ?? 0);
+
+        const opts = data.filter_options ?? {};
+        _populateSelect('filter-bestandsdaten-bl', 'Bundesland: Alle', opts.bundeslaender, state.bl);
         _syncScaleModes();
     } catch (err) { console.error('Bestandsdaten:', err); }
 }
@@ -112,13 +127,17 @@ async function loadBestandsdaten(state) {
 ---------------------------------------------------------- */
 async function loadBewegungsdaten(state) {
     try {
-        const [data, stats] = await Promise.all([
+        const [data, bewegStats] = await Promise.all([
             fetchBewegungsdaten({ page: state.p, search: state.search, bl: state.bl, kat: state.kat, sort: state.sort }),
-            fetchStats(),
+            fetchBewegungStats(),
         ]);
         renderBewegTable(data.items);
         renderPagination('pagination-controls-beweg', state.p, data.total_pages ?? 1, 'goToPage');
-        renderKPIs(stats.total ?? 0, stats.done ?? 0, stats.pending ?? 0);
+        renderBewegKPIs(
+            bewegStats.total  ?? data.total_count ?? 0,
+            bewegStats.month  ?? 0,
+            bewegStats.today  ?? 0
+        );
 
         const opts = data.filter_options ?? {};
         _populateSelect('filter-beweg-bl',  'Bundesland: Alle', opts.bundeslaender, state.bl);
@@ -172,6 +191,7 @@ function goToPage(page) { updateUrl(null, { p: page }); }
 
 function _syncFilters(state) {
     _setVal('filter-bestandsdaten-status', state.status);
+    _setVal('filter-bestandsdaten-bl',     state.bl);
     _setVal('filter-beweg-bl',   state.bl);
     _setVal('filter-beweg-kat',  state.kat);
     _setVal('filter-beweg-sort', state.sort);

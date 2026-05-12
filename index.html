@@ -48,7 +48,7 @@
     <!-- MAIN -->
     <main class="dashboard-main">
 
-        <!-- KPI CARDS -->
+        <!-- KPI CARDS (nur Bestandsdaten) -->
         <section class="kpi-grid" id="kpi-row">
             <div class="scale-card kpi-card kpi-card--neutral">
                 <p class="kpi-label">Orte Gesamt</p>
@@ -64,16 +64,35 @@
             </div>
         </section>
 
+        <!-- KPI CARDS (nur Bewegungsdaten) -->
+        <section class="kpi-grid" id="kpi-row-beweg">
+            <div class="scale-card kpi-card kpi-card--neutral">
+                <p class="kpi-label">Maßnahmen gesamt</p>
+                <h2 id="kpi-beweg-total" class="kpi-value">0</h2>
+            </div>
+            <div class="scale-card kpi-card kpi-card--success">
+                <p class="kpi-label">Diesen Monat gefunden</p>
+                <h2 id="kpi-beweg-month" class="kpi-value kpi-value--success">0</h2>
+            </div>
+            <div class="scale-card kpi-card kpi-card--primary">
+                <p class="kpi-label">Funde heute</p>
+                <h2 id="kpi-beweg-today" class="kpi-value kpi-value--primary">0</h2>
+            </div>
+        </section>
+
         <!-- BESTANDSDATEN -->
         <div id="page-bestandsdaten" class="page-content">
-            <div class="page-header">
+            <div class="page-header page-header--stacked">
                 <h1 class="page-title">Bestandsdaten</h1>
-                <div class="filter-bar">
+                <div class="scale-card filter-grid">
                     <scale-text-field id="filter-bestandsdaten-suche" label="Suche Ort/AGS..." mode="light"></scale-text-field>
                     <select id="filter-bestandsdaten-status" class="dashboard-select" onchange="updateUrl(null, { status: this.value })">
                         <option value="Alle">Crawl-Status: Alle</option>
                         <option value="Gecrawlt">Bereits gecrawlt</option>
                         <option value="Ausstehend">Ausstehend</option>
+                    </select>
+                    <select id="filter-bestandsdaten-bl" class="dashboard-select" onchange="updateUrl(null, { bl: this.value })">
+                        <option value="Alle">Bundesland: Alle</option>
                     </select>
                 </div>
             </div>

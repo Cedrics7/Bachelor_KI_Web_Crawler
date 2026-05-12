@@ -18,15 +18,16 @@ function buildQueryString(params) {
 
 /* ----------------------------------------------------------
    GET /api/bestandsdaten
-   Query: page, page_size, search, status
-   Response: { items, total_count, page, page_size, total_pages }
+   Query: page, page_size, search, status, bundesland
+   Response: { items, total_count, page, page_size, total_pages, filter_options }
 ---------------------------------------------------------- */
 async function fetchBestandsdaten(params = {}) {
     const mapped = {
-        page:      params.page      ?? 1,
-        page_size: params.page_size ?? 50,
-        search:    params.search    ?? null,
-        status:    params.status    ?? 'Alle',
+        page:       params.page      ?? 1,
+        page_size:  params.page_size ?? 50,
+        search:     params.search    ?? null,
+        status:     params.status    ?? 'Alle',
+        bundesland: params.bl        ?? 'Alle',
     };
     const qs = buildQueryString(mapped);
     const res = await fetch(`${API_BASE}/api/bestandsdaten${qs}`);
@@ -52,6 +53,27 @@ async function fetchBewegungsdaten(params = {}) {
     const res = await fetch(`${API_BASE}/api/bewegungsdaten${qs}`);
     if (!res.ok) throw new Error(`Bewegungsdaten: HTTP ${res.status}`);
     return res.json();
+}
+
+/* ----------------------------------------------------------
+   GET /api/bewegung_stats
+   Response: { total, month, today }
+   Fallback: client-seitige Berechnung wenn Endpoint fehlt
+---------------------------------------------------------- */
+async function fetchBewegungStats() {
+    try {
+        const res = await fetch(`${API_BASE}/api/bewegung_stats`, {
+            signal: AbortSignal.timeout(3000),
+        });
+        if (res.ok) return res.json();
+    } catch {}
+    /* Fallback: total aus allgemeinen Stats, month/today = 0 */
+    try {
+        const s = await fetchStats();
+        return { total: s.total ?? 0, month: 0, today: 0 };
+    } catch {
+        return { total: 0, month: 0, today: 0 };
+    }
 }
 
 /* ----------------------------------------------------------
