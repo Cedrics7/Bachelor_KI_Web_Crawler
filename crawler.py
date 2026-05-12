@@ -33,10 +33,11 @@ CONFIG = {
     "timeout_seconds": 10,
     "sleep_between_targets": 2,
     "min_end_datum": str(date.today()),
+    "max_text_chars": 150_000,
     "ziel_kategorien": {
         "Sanierung": ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
         "Neubau": ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
-        "Privatisierung": ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
+        "Privatisierung": ["Grundstüksverkauf", "Veräußerung", "Liegenschaften"],
         "Tiefbau": ["Tiefbau", "Straßenbau", "Kanalsanierung", "Brückenbau"]
     }
 }
@@ -64,15 +65,17 @@ class TokenManager:
 
     def check_limits(self, estimated_tokens):
         if estimated_tokens >= self.tpm_limit:
-            print(f"!!! WARNUNG: Prompt zu groß ({estimated_tokens} Tokens)!")
-            return True
+            print(f"!!! WARNUNG: Prompt zu groß ({estimated_tokens} Tokens), wird gekürzt oder übersprungen!")
+            return False
 
         while True:
             now = datetime.now()
             if date.today() > self.day_start_time:
                 self.requests_today = 0
                 self.day_start_time = date.today()
-            if (now - self.minute_start_time).seconds >= 60:
+
+            elapsed = (now - self.minute_start_time).seconds
+            if elapsed >= 60:
                 self.requests_this_minute = 0
                 self.tokens_this_minute = 0
                 self.minute_start_time = now
@@ -81,13 +84,16 @@ class TokenManager:
                 print("!!! Tageslimit erreicht.")
                 return False
 
-            if (self.requests_this_minute < self.rpm_limit) and \
-                    (self.tokens_this_minute + estimated_tokens < self.tpm_limit):
+            rpm_ok = self.requests_this_minute < self.rpm_limit
+            tpm_ok = self.tokens_this_minute + estimated_tokens < self.tpm_limit
+
+            if rpm_ok and tpm_ok:
                 return True
 
-            wait_time = 65 - (now - self.minute_start_time).seconds
-            print(f"--- API Schutz: Pause für {wait_time}s ---")
-            time.sleep(max(wait_time, 1))
+            wait_time = max(65 - elapsed, 1)
+            reason = "RPM" if not rpm_ok else "TPM"
+            print(f"--- API Schutz ({reason}): Pause für {wait_time}s ---")
+            time.sleep(wait_time)
 
     def update_usage(self, token_count):
         self.requests_this_minute += 1
@@ -117,7 +123,6 @@ def write_history_log(event_type, message):
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(log_entry)
 
-    # Datei auf 100 Zeilen begrenzen
     try:
         with open(log_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -133,20 +138,16 @@ def update_live_log(ort, status, funde=0, gespart=False):
     heute_str = datetime.now().strftime("%Y-%m-%d")
     gesamt_funde_heute = funde
 
-    # 1. Bestehende Daten laden, um den Tageszähler zu erhalten
     if os.path.exists(status_file):
         try:
             with open(status_file, "r", encoding="utf-8") as f:
                 old_data = json.load(f)
-                # Prüfen, ob das letzte Update von heute war
                 last_update = old_data.get("timestamp", "")
                 if last_update.startswith(heute_str):
-                    # Nur die neuen Funde auf den Tageswert addieren
                     gesamt_funde_heute += old_data.get("letzte_funde", 0)
         except Exception as e:
             print(f"Fehler beim Lesen des Status-Files: {e}")
 
-    # 2. Neuen Status schreiben
     log_data = {
         "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "aktueller_ort": ort,
@@ -161,14 +162,11 @@ def update_live_log(ort, status, funde=0, gespart=False):
 
 # =====================================================================
 # --- 3b. HEARTBEAT-THREAD ---
-# Aktualisiert den Timestamp in crawler_live_status.json alle 30s,
-# damit das Dashboard immer sieht ob der Crawler noch lebt.
 # =====================================================================
 _heartbeat_stop = threading.Event()
 
 
 def _heartbeat_worker():
-    """Alle 30s den Timestamp in crawler_live_status.json aktualisieren."""
     status_file = "crawler_live_status.json"
     while not _heartbeat_stop.is_set():
         try:
@@ -215,7 +213,6 @@ def extract_main_text(html):
 
 
 def is_relevant_url(url):
-    # .pdf hier NICHT ignorieren, da wir sie in get_subpages explizit verarbeiten
     ignore = ["impressum", "datenschutz", "kontakt", "sitemap", "login", ".jpg", ".png"]
     return not any(kw in url.lower() for kw in ignore)
 
@@ -225,8 +222,6 @@ def get_subpages(start_url, max_pages):
     html_collected = []
     pdf_collected = []
     base_domain = urlparse(start_url).netloc
-
-    # FIX: prio_keywords innerhalb der Funktion definiert
     prio_keywords = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
 
     while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
@@ -239,7 +234,6 @@ def get_subpages(start_url, max_pages):
             if resp.status_code == 200:
                 if curr.lower().endswith(".pdf"):
                     print(f"  - Scanne PDF: {curr[:50]}...")
-                    # Aufruf mit max_pages aus CONFIG
                     text = extract_pdf_text(curr, CONFIG["max_pdf_pages"])
                     if text:
                         pdf_collected.append((curr, text))
@@ -266,6 +260,11 @@ def get_subpages(start_url, max_pages):
 # =====================================================================
 
 def analyze_with_gemini(gesammelter_text):
+    # Text auf max_text_chars kürzen um TPM-Limit nicht zu sprengen
+    if len(gesammelter_text) > CONFIG["max_text_chars"]:
+        print(f"  ⚠️  Text gekürzt: {len(gesammelter_text)} → {CONFIG['max_text_chars']} Zeichen")
+        gesammelter_text = gesammelter_text[:CONFIG["max_text_chars"]]
+
     est_tokens = len(gesammelter_text) // 4
     if not api_guard.check_limits(est_tokens): return []
 
@@ -289,6 +288,10 @@ def analyze_with_gemini(gesammelter_text):
         WICHTIG:
         - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
         - Jede Maßnahme MUSS ein Start- oder Enddatum haben.
+        - "quelle_url": Gib AUSSCHLIEßLICH die spezifische URL der Unterseite an, auf der diese Maßnahme
+          beschrieben wird (z.B. /projekte/strassenbau-2026). NIEMALS die Startseite oder Domain allein.
+          Bei mehreren URLs zur selben Maßnahme: wähle die mit dem konkretesten Inhalt.
+        - Gibt es Dopplungen (gleiche Maßnahme, verschiedene URLs): nur einmal ausgeben, mit der spezifischsten URL.
 
         Antworte im JSON-Format:
         {{
@@ -318,9 +321,22 @@ def analyze_with_gemini(gesammelter_text):
         return []
 
 
-# --- 5. MAIN LOOP ---
+# =====================================================================
+# --- 5. DUPLIKAT-PRÜFUNG auf Maßnahmen-Ebene ---
+# =====================================================================
+def is_duplicate(cursor, ags, massnahme, massnahme_start):
+    """Gibt True zurück wenn diese Maßnahme für diesen Ort bereits existiert."""
+    cursor.execute("""
+        SELECT id FROM crawl_results
+        WHERE ags = %s
+          AND massnahme = %s
+          AND massnahme_start = %s
+    """, (ags, massnahme, massnahme_start))
+    return cursor.fetchone() is not None
+
+
+# --- 6. MAIN LOOP ---
 def run_crawler():
-    # Heartbeat starten: hält Timestamp alle 30s frisch
     _heartbeat_stop.clear()
     heartbeat = threading.Thread(target=_heartbeat_worker, daemon=True)
     heartbeat.start()
@@ -374,9 +390,12 @@ def run_crawler():
                 found = analyze_with_gemini(text_bulk)
 
                 valid_count = 0
+                skipped_dups = 0
                 for item in found:
                     m_start = item.get("massnahme_start")
-                    m_ende = item.get("massnahme_ende")
+                    m_ende  = item.get("massnahme_ende")
+                    m_name  = item.get("massnahme")
+
                     if not m_start and not m_ende: continue
                     if m_ende:
                         try:
@@ -384,17 +403,29 @@ def run_crawler():
                         except:
                             pass
 
+                    # Duplikat-Check auf Maßnahmen-Ebene
+                    if is_duplicate(cursor, ags, m_name, m_start):
+                        skipped_dups += 1
+                        log_event("🔄", f"Duplikat übersprungen: {m_name}")
+                        continue
+
                     valid_count += 1
                     cursor.execute("""
-                        INSERT INTO crawl_results (ags,gefunden_am, start_time, end_time, status, kategorie, massnahme, adresse, massnahme_start, massnahme_ende, massnahme_url, content_hash)
+                        INSERT INTO crawl_results
+                            (ags, gefunden_am, start_time, end_time, status, kategorie,
+                             massnahme, adresse, massnahme_start, massnahme_ende,
+                             massnahme_url, content_hash)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (ags, datetime.now().strftime("%x"), start_time, datetime.now(), "Erfolgreich",
-                          item.get('kategorie'), item.get('massnahme'),
-                          item.get("adresse"), item.get("massnahme_start"), item.get("massnahme_ende"),
-                          item.get("quelle_url"), content_hash))
+                    """, (
+                        ags, datetime.now().strftime("%x"), start_time, datetime.now(),
+                        "Erfolgreich",
+                        item.get('kategorie'), m_name,
+                        item.get("adresse"), m_start, m_ende,
+                        item.get("quelle_url"), content_hash
+                    ))
 
                 total_funde += valid_count
-                log_event("✅", f"Analyse beendet: {valid_count} neue Funde für {ort}.")
+                log_event("✅", f"Analyse beendet: {valid_count} neue Funde, {skipped_dups} Duplikate übersprungen für {ort}.")
                 update_live_log(ort, f"✅ Fertig: {valid_count} Funde", funde=valid_count)
 
             cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s", (datetime.now(), ags))
@@ -402,7 +433,6 @@ def run_crawler():
             time.sleep(CONFIG["sleep_between_targets"])
 
     finally:
-        # Heartbeat stoppen sobald Crawler fertig oder abgebrochen
         _heartbeat_stop.set()
         heartbeat.join(timeout=5)
 
