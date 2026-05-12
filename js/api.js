@@ -14,15 +14,15 @@ async function _get(path) {
 
 function fetchBestandsdaten({ page = 1, page_size = 50, search = '', status = 'Alle', bl = 'Alle' } = {}) {
     const p = new URLSearchParams({ page, page_size });
-    if (search)          p.set('search',     search);
-    if (status !== 'Alle') p.set('status',   status);
+    if (search)            p.set('search',     search);
+    if (status !== 'Alle') p.set('status',     status);
     if (bl     !== 'Alle') p.set('bundesland', bl);
     return _get(`/api/bestandsdaten?${p}`);
 }
 
 function fetchBewegungsdaten({ page = 1, page_size = 50, search = '', bl = 'Alle', kat = 'Alle', sort = 'desc' } = {}) {
     const p = new URLSearchParams({ page, page_size, sort });
-    if (search)        p.set('search',     search);
+    if (search)         p.set('search',     search);
     if (bl  !== 'Alle') p.set('bundesland', bl);
     if (kat !== 'Alle') p.set('kategorie',  kat);
     return _get(`/api/bewegungsdaten?${p}`);
@@ -54,7 +54,7 @@ function fetchChangelog() {
 
 async function checkApiStatus() {
     try {
-        const res = await fetch('/api/stats', { signal: AbortSignal.timeout(4000) });
+        const res = await fetch(API_BASE + '/api/stats', { signal: AbortSignal.timeout(4000) });
         return res.ok;
     } catch {
         return false;
