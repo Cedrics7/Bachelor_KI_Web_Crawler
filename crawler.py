@@ -38,7 +38,7 @@ CONFIG = {
     "ziel_kategorien": {
         "Sanierung": ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
         "Neubau": ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
-        "Privatisierung": ["Grundstüksverkauf", "Veräußerung", "Liegenschaften"],
+        "Privatisierung": ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
         "Tiefbau": ["Tiefbau", "Straßenbau", "Kanalsanierung", "Brückenbau"]
     }
 }
@@ -140,27 +140,53 @@ def write_history_log(event_type, message):
         pass
 
 
-def update_live_log(ort, status, funde=0, gespart=False):
+def reset_live_log_if_new_day():
+    """
+    Wird beim Start von run_crawler() aufgerufen.
+    Setzt letzte_funde auf 0 zurück wenn das gespeicherte Datum nicht mehr heute ist.
+    """
     status_file = "crawler_live_status.json"
-    heute_str = datetime.now().strftime("%Y-%m-%d")
+    heute_str   = datetime.now().strftime("%Y-%m-%d")
+
+    if not os.path.exists(status_file):
+        return
+
+    try:
+        with open(status_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not data.get("timestamp", "").startswith(heute_str):
+            data["letzte_funde"] = 0
+            data["timestamp"]    = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            with open(status_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            log_event("🔄", "Neuer Tag erkannt – Livelog-Funde zurückgesetzt.")
+    except Exception as e:
+        print(f"Fehler beim Tages-Reset des Livelogs: {e}")
+
+
+def update_live_log(ort, status, funde=0, gespart=False):
+    status_file        = "crawler_live_status.json"
+    heute_str          = datetime.now().strftime("%Y-%m-%d")
     gesamt_funde_heute = funde
 
     if os.path.exists(status_file):
         try:
             with open(status_file, "r", encoding="utf-8") as f:
                 old_data = json.load(f)
-                if old_data.get("timestamp", "").startswith(heute_str):
-                    gesamt_funde_heute += old_data.get("letzte_funde", 0)
+            # Nur aufaddieren wenn Eintrag von heute ist
+            if old_data.get("timestamp", "").startswith(heute_str):
+                gesamt_funde_heute += old_data.get("letzte_funde", 0)
         except Exception as e:
             print(f"Fehler beim Lesen des Status-Files: {e}")
 
     with open(status_file, "w", encoding="utf-8") as f:
         json.dump({
-            "timestamp":    datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "timestamp":     datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             "aktueller_ort": ort,
-            "status":       status,
-            "letzte_funde": gesamt_funde_heute,
-            "hash_match":   gespart
+            "status":        status,
+            "letzte_funde":  gesamt_funde_heute,
+            "hash_match":    gespart
         }, f, ensure_ascii=False, indent=4)
 
 
@@ -274,8 +300,7 @@ def normalize_url(raw_url, start_url):
         return start_url
     parsed = urlparse(raw_url)
     if parsed.scheme in ('http', 'https'):
-        return raw_url  # bereits absolut
-    # relativ → mit start_url zusammenführen
+        return raw_url
     return urljoin(start_url, raw_url)
 
 
@@ -344,7 +369,6 @@ def analyze_with_gemini(gesammelter_text, start_url):
         raw = response.text.replace("```json", "").replace("```", "").strip()
         massnahmen = json.loads(raw).get("massnahmen", [])
 
-        # Sicherheitsnetz: relative URLs nachträglich vervollständigen
         for item in massnahmen:
             item["quelle_url"] = normalize_url(item.get("quelle_url"), start_url)
 
@@ -371,6 +395,9 @@ def is_duplicate(cursor, ags, massnahme, massnahme_start):
 # --- 7. MAIN LOOP ---
 # =====================================================================
 def run_crawler():
+    # Livelog-Funde zurücksetzen wenn neuer Tag
+    reset_live_log_if_new_day()
+
     _heartbeat_stop.clear()
     heartbeat = threading.Thread(target=_heartbeat_worker, daemon=True)
     heartbeat.start()
