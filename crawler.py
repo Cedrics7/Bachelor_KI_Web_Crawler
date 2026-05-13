@@ -624,13 +624,12 @@ def run_crawler():
             )
 
             if not text_bulk.strip():
+                # Kein Text = Fehler (TIMEOUT, 403, JS-only etc.)
+                # last_scanned wird NICHT gesetzt → Ort wird beim naechsten Lauf priorisiert
                 fehler_codes = set(status_log.values())
                 fehler_info  = ", ".join(str(c) for c in sorted(fehler_codes, key=str))
-                log_event("⚠️", f"Kein Text für {ort} gefunden. Status-Codes: [{fehler_info}]")
+                log_event("⚠️", f"Kein Text für {ort} – kein Timestamp gesetzt. Status-Codes: [{fehler_info}]")
                 update_live_log(ort, f"⚠️ Kein Text [{fehler_info}]")
-                cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
-                               (datetime.now(), ags))
-                conn.commit()
                 continue
 
             content_hash = get_content_hash(text_bulk)
@@ -685,6 +684,7 @@ def run_crawler():
                                f"{skipped_dups} Duplikate übersprungen für {ort}.")
                 update_live_log(ort, f"✅ Fertig: {valid_count} Funde", funde=valid_count)
 
+            # last_scanned nur setzen wenn Crawl erfolgreich war (Text vorhanden)
             cursor.execute("UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
                            (datetime.now(), ags))
             conn.commit()
