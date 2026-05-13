@@ -36,6 +36,9 @@ CONFIG = {
     "max_text_chars": 500_000,
     "ollama_retries": 3,
     "ollama_retry_delays": [10, 30, 60],
+    # Priorisierte Region: Targets aus dieser Region werden zuerst gescannt.
+    # Muss mit region_mapping.region übereinstimmen. None = keine Priorisierung.
+    "prio_region": "Nord",
     "ziel_kategorien": {
         "Sanierung": ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
         "Neubau": ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
@@ -610,12 +613,30 @@ def run_crawler():
     total_funde       = 0
     start_zeit_dt     = datetime.now()
 
-    write_history_log("START", f"Beginne Durchlauf mit max. {CONFIG['max_targets']} Targets.")
+    prio_region = CONFIG.get("prio_region")
 
-    cursor.execute(
-        "SELECT ags, url, ort FROM crawl_targets ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
-        (CONFIG["max_targets"],)
-    )
+    write_history_log("START", f"Beginne Durchlauf mit max. {CONFIG['max_targets']} Targets."
+                               + (f" Priorisierte Region: {prio_region}." if prio_region else ""))
+
+    if prio_region:
+        # Targets aus der priorisierten Region zuerst (CASE-Sortierung),
+        # dann alle anderen – jeweils nach last_scanned ASC.
+        cursor.execute("""
+            SELECT ct.ags, ct.url, ct.ort
+            FROM crawl_targets ct
+            LEFT JOIN region_mapping rm ON ct.bundesland = rm.bundesland
+            ORDER BY
+                CASE WHEN rm.region = %s THEN 0 ELSE 1 END ASC,
+                ct.last_scanned ASC NULLS FIRST
+            LIMIT %s
+        """, (prio_region, CONFIG["max_targets"]))
+        log_event("🎯", f"Region-Priorisierung aktiv: '{prio_region}' wird bevorzugt gescannt.")
+    else:
+        cursor.execute(
+            "SELECT ags, url, ort FROM crawl_targets ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
+            (CONFIG["max_targets"],)
+        )
+
     targets   = cursor.fetchall()
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
 
