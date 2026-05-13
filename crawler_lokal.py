@@ -536,7 +536,12 @@ def analyze_with_ollama(gesammelter_text: str, start_url: str):
 
         WICHTIG:
         - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
-        - Jede Maßnahme MUSS ein Start- oder Enddatum haben.
+        - Jede Maßnahme MUSS mindestens ein Start- oder Enddatum haben.
+        - DATUM-REGELN (strikt einhalten!):
+          * Bekanntes Datum: immer als String im Format "YYYY-MM-DD" angeben.
+          * Unbekanntes oder fehlendes Datum: immer als JSON null angeben – NIEMALS als leeren String "".
+          * Beispiel korrekt:   "massnahme_start": "2025-03-01", "massnahme_ende": null
+          * Beispiel falsch:    "massnahme_start": "2025-03-01", "massnahme_ende": ""
         - "quelle_url": Gib IMMER eine vollständige absolute URL an, die mit http:// oder https:// beginnt.
           Die Basis-Domain lautet: {base_url}
           Bei mehreren URLs zur selben Maßnahme: wähle die mit dem konkretesten Inhalt.
@@ -550,7 +555,7 @@ def analyze_with_ollama(gesammelter_text: str, start_url: str):
                     "massnahme": "...",
                     "adresse": "...",
                     "massnahme_start": "YYYY-MM-DD",
-                    "massnahme_ende": "YYYY-MM-DD",
+                    "massnahme_ende": "YYYY-MM-DD oder null",
                     "quelle_url": "..."
                 }}
             ]
