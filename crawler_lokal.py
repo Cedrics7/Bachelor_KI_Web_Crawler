@@ -679,7 +679,7 @@ def run_crawler():
                              massnahme_url, content_hash)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
-                        ags, datetime.now().strftime("%x"), start_time, datetime.now(),
+                        ags, datetime.now().strftime("%Y-%m-%d"), start_time, datetime.now(),
                         "Erfolgreich",
                         item.get('kategorie'), m_name,
                         item.get("adresse"), m_start, m_ende,
