@@ -33,7 +33,8 @@ CONFIG = {
     "sleep_between_targets": 2,
     "min_end_datum": str(date.today()),
     "min_pdf_year": 2024,
-    "max_text_chars": 500_000,
+    "max_text_chars": 5_000_000,
+    "chunk_size": 80_000,          # Zeichen pro Ollama-Call; nur aktiv wenn Text > chunk_size
     "ollama_retries": 3,
     "ollama_retry_delays": [10, 30, 60],
     # Priorisierte Region: Targets aus dieser Region werden zuerst gescannt.
@@ -518,9 +519,12 @@ def _call_ollama_with_retry(prompt: str, est_tokens: int):
                     "model":  OLLAMA_MODEL,
                     "prompt": prompt,
                     "stream": False,
-                    "format": "json"          # Ollama JSON-Modus – erzwingt gültiges JSON
+                    "format": "json",          # Ollama JSON-Modus – erzwingt gültiges JSON
+                    "options": {
+                        "num_ctx": 32768        # Kontextfenster für ~80k Zeichen pro Chunk
+                    }
                 },
-                timeout=300                   # großzügiges Timeout für lange Texte
+                timeout=300                    # großzügiges Timeout für lange Texte
             )
             resp.raise_for_status()
             api_guard.update_usage(est_tokens)
@@ -540,7 +544,8 @@ def _call_ollama_with_retry(prompt: str, est_tokens: int):
 
 def analyze_with_ollama(gesammelter_text: str, start_url: str):
     """
-    Ersetzt analyze_with_gemini() 1:1 – gleicher Prompt, gleiche Rückgabe.
+    Sendet einen einzelnen Text-Chunk an Ollama und gibt die gefundenen Maßnahmen zurück.
+    Für große Texte analyze_with_ollama_chunked() verwenden.
     """
     est_tokens = len(gesammelter_text) // 4
     if not api_guard.check_limits(est_tokens):
@@ -603,13 +608,51 @@ def analyze_with_ollama(gesammelter_text: str, start_url: str):
         raw        = raw_response.replace("```json", "").replace("```", "").strip()
         massnahmen = json.loads(raw).get("massnahmen", [])
         for item in massnahmen:
-            item["quelle_url"]       = normalize_url(item.get("quelle_url"), start_url)
-            item["massnahme_start"]  = sanitize_date(item.get("massnahme_start"))
-            item["massnahme_ende"]   = sanitize_date(item.get("massnahme_ende"))
+            item["quelle_url"]      = normalize_url(item.get("quelle_url"), start_url)
+            item["massnahme_start"] = sanitize_date(item.get("massnahme_start"))
+            item["massnahme_ende"]  = sanitize_date(item.get("massnahme_ende"))
         return massnahmen
     except Exception as e:
         log_event("❌", f"JSON-Parsing fehlgeschlagen: {e}")
         return []
+
+
+def deduplicate_massnahmen(massnahmen: list) -> list:
+    """Entfernt chunk-übergreifende Duplikate anhand von massnahme + massnahme_start."""
+    seen   = set()
+    unique = []
+    for item in massnahmen:
+        key = (item.get("massnahme", "").strip().lower(), item.get("massnahme_start"))
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
+
+
+def analyze_with_ollama_chunked(gesammelter_text: str, start_url: str) -> list:
+    """
+    Chunking nur bei Bedarf:
+    - Text <= chunk_size  →  direkter Ollama-Call (wie bisher, kein Overhead)
+    - Text >  chunk_size  →  automatisches Aufteilen in Chunks, Ergebnisse werden gemergt
+    """
+    chunk_size = CONFIG["chunk_size"]
+
+    if len(gesammelter_text) <= chunk_size:
+        return analyze_with_ollama(gesammelter_text, start_url)
+
+    chunks = [gesammelter_text[i:i + chunk_size]
+              for i in range(0, len(gesammelter_text), chunk_size)]
+    log_event("📄", f"Text zu groß ({len(gesammelter_text):,} Zeichen) → {len(chunks)} Chunks à {chunk_size:,} Zeichen")
+
+    alle_massnahmen = []
+    for idx, chunk in enumerate(chunks):
+        log_event("🤖", f"Chunk {idx + 1}/{len(chunks)} ({len(chunk):,} Zeichen) ...")
+        ergebnisse = analyze_with_ollama(chunk, start_url)
+        alle_massnahmen.extend(ergebnisse)
+
+    unique = deduplicate_massnahmen(alle_massnahmen)
+    log_event("✅", f"Chunking abgeschlossen: {len(alle_massnahmen)} Roh-Funde → {len(unique)} nach Dedup")
+    return unique
 
 
 # =====================================================================
@@ -710,7 +753,7 @@ def run_crawler():
             else:
                 log_event("🤖", f"Sende Daten für {ort} an Ollama ({OLLAMA_MODEL})...")
                 update_live_log(ort, f"🤖 Ollama Analyse ({OLLAMA_MODEL})...")
-                found = analyze_with_ollama(text_bulk, start_url)
+                found = analyze_with_ollama_chunked(text_bulk, start_url)
 
                 valid_count  = 0
                 skipped_dups = 0
