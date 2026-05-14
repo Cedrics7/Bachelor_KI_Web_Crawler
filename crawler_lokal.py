@@ -473,7 +473,34 @@ def normalize_url(raw_url, start_url):
 
 
 # =====================================================================
-# --- 5. KI ANALYSE mit Ollama (ersetzt Gemini) ---
+# --- 5. DATUM-SANITIERUNG ---
+# =====================================================================
+_DATE_PLACEHOLDER_RE = re.compile(
+    r'^(YYYY-MM-DD|YYYY-MM|YYYY|TT\.MM\.JJJJ|DD\.MM\.YYYY)$', re.IGNORECASE
+)
+
+def sanitize_date(value) -> str | None:
+    """
+    Gibt None zurück wenn der Wert:
+    - None oder leer ist
+    - ein bekannter Format-Platzhalter ist (z.B. "YYYY-MM-DD")
+    - kein valides ISO-Datum (YYYY-MM-DD) ist
+    Ansonsten wird der Wert unverändert zurückgegeben.
+    """
+    if not value:
+        return None
+    value = str(value).strip()
+    if not value or _DATE_PLACEHOLDER_RE.match(value):
+        return None
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+        return value
+    except ValueError:
+        return None
+
+
+# =====================================================================
+# --- 6. KI ANALYSE mit Ollama (ersetzt Gemini) ---
 # =====================================================================
 def _call_ollama_with_retry(prompt: str, est_tokens: int):
     """
@@ -541,8 +568,8 @@ def analyze_with_ollama(gesammelter_text: str, start_url: str):
         - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
         - Jede Maßnahme MUSS mindestens ein Start- oder Enddatum haben.
         - DATUM-REGELN (strikt einhalten!):
-          * Bekanntes Datum: immer als String im Format "YYYY-MM-DD" angeben.
-          * Unbekanntes oder fehlendes Datum: immer als JSON null angeben – NIEMALS als leeren String "".
+          * Bekanntes Datum: immer als String im Format "YYYY-MM-DD" angeben, z.B. "2025-03-01".
+          * Unbekanntes oder fehlendes Datum: immer als JSON null angeben – NIEMALS als leeren String "" oder als Platzhalter-Text.
           * Beispiel korrekt:   "massnahme_start": "2025-03-01", "massnahme_ende": null
           * Beispiel falsch:    "massnahme_start": "2025-03-01", "massnahme_ende": ""
         - "quelle_url": Gib IMMER eine vollständige absolute URL an, die mit http:// oder https:// beginnt.
@@ -557,8 +584,8 @@ def analyze_with_ollama(gesammelter_text: str, start_url: str):
                     "kategorie": "...",
                     "massnahme": "...",
                     "adresse": "...",
-                    "massnahme_start": "YYYY-MM-DD",
-                    "massnahme_ende": "YYYY-MM-DD oder null",
+                    "massnahme_start": "2025-03-01",
+                    "massnahme_ende": null,
                     "quelle_url": "..."
                 }}
             ]
@@ -576,7 +603,9 @@ def analyze_with_ollama(gesammelter_text: str, start_url: str):
         raw        = raw_response.replace("```json", "").replace("```", "").strip()
         massnahmen = json.loads(raw).get("massnahmen", [])
         for item in massnahmen:
-            item["quelle_url"] = normalize_url(item.get("quelle_url"), start_url)
+            item["quelle_url"]       = normalize_url(item.get("quelle_url"), start_url)
+            item["massnahme_start"]  = sanitize_date(item.get("massnahme_start"))
+            item["massnahme_ende"]   = sanitize_date(item.get("massnahme_ende"))
         return massnahmen
     except Exception as e:
         log_event("❌", f"JSON-Parsing fehlgeschlagen: {e}")
@@ -584,18 +613,25 @@ def analyze_with_ollama(gesammelter_text: str, start_url: str):
 
 
 # =====================================================================
-# --- 6. DUPLIKAT-PRÜFUNG auf Maßnahmen-Ebene ---
+# --- 7. DUPLIKAT-PRÜFUNG auf Maßnahmen-Ebene ---
 # =====================================================================
 def is_duplicate(cursor, ags, massnahme, massnahme_start):
-    cursor.execute("""
-        SELECT id FROM crawl_results
-        WHERE ags = %s AND massnahme = %s AND massnahme_start = %s
-    """, (ags, massnahme, massnahme_start))
+    if massnahme_start is None:
+        # Kein Datum verfügbar: nur nach ags + massnahme prüfen
+        cursor.execute("""
+            SELECT id FROM crawl_results
+            WHERE ags = %s AND massnahme = %s AND massnahme_start IS NULL
+        """, (ags, massnahme))
+    else:
+        cursor.execute("""
+            SELECT id FROM crawl_results
+            WHERE ags = %s AND massnahme = %s AND massnahme_start = %s
+        """, (ags, massnahme, massnahme_start))
     return cursor.fetchone() is not None
 
 
 # =====================================================================
-# --- 7. MAIN LOOP ---
+# --- 8. MAIN LOOP ---
 # =====================================================================
 def run_crawler():
     _reset_log_if_new_month(CONSOLE_LOG_FILE)
@@ -689,7 +725,7 @@ def run_crawler():
                         try:
                             if datetime.strptime(m_ende, "%Y-%m-%d").date() < min_datum:
                                 continue
-                        except:
+                        except ValueError:
                             pass
 
                     if is_duplicate(cursor, ags, m_name, m_start):
