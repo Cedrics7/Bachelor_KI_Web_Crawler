@@ -584,20 +584,20 @@ ZEITRAUM-FILTER (Stichtag heute: {today_str}):
 WICHTIG:
 - Leere Liste wenn kein Bauvorhaben: {{"massnahmen": []}}
 - Jede Maßnahme MUSS mind. ein Start- oder Enddatum haben.
-- DATUM: bekannt → "YYYY-MM-DD", unbekannt → JSON null (NIE leerer String)
-- quelle_url: vollständige URL mit http/https. Basis: {base_url}
-- Duplikate (bereits oben gelistet) NICHT erneut ausgeben.
-
+- "quelle_url": Gib IMMER eine vollständige absolute URL an, die mit http:// oder https:// beginnt.
+Die Basis-Domain lautet: {base_url}
+Bei mehreren URLs zur selben Maßnahme: wähle die mit dem konkretesten Inhalt.
+- Gibt es Dopplungen (gleiche Maßnahme, verschiedene URLs): nur einmal ausgeben.
 Antworte ausschließlich als JSON:
 {{
     "massnahmen": [
         {{
-            "kategorie": "...",
-            "massnahme": "...",
-            "adresse": "...",
-            "massnahme_start": "2025-03-01",
-            "massnahme_ende": null,
-            "quelle_url": "..."
+                    "kategorie": "...",
+                    "massnahme": "...",
+                    "adresse": "...",
+                    "massnahme_start": "YYYY-MM-DD",
+                    "massnahme_ende": "YYYY-MM-DD",
+                    "quelle_url": "..."
         }}
     ]
 }}
