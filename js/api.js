@@ -4,7 +4,7 @@
 
 'use strict';
 
-const API_BASE = '';
+const API_BASE = 'http://localhost:8000';
 
 async function _get(path) {
     const res = await fetch(API_BASE + path);

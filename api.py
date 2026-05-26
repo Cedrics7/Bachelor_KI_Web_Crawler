@@ -9,6 +9,7 @@ from datetime import datetime, date
 import os
 import json
 import mimetypes
+import uvicorn
 
 from database import get_db_connection
 
@@ -314,5 +315,4 @@ def get_changelog():
 
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

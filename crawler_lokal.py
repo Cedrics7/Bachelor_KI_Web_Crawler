@@ -26,9 +26,9 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 CONFIG = {
     "heartbeat": 10,
     "max_log_lines": 200,
-    "max_targets": 4,
+    "max_targets": 3,
     "max_subpages": 50,
-    "max_pdf_pages": 5,
+    "max_pdf_pages": 10,
     "timeout_seconds": 10,
     "sleep_between_targets": 2,
     "min_end_datum": str(date.today()),

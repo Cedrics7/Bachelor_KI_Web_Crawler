@@ -22,7 +22,6 @@ from database import get_db_connection
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-#todo Patchnotes
 
 # =====================================================================
 # --- 1. CRAWLER KONFIGURATION ---
