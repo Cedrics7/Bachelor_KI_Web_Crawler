@@ -12,15 +12,15 @@ import json
 import time
 from datetime import datetime
 
-from crawler.config import CONFIG, CONSOLE_LOG_FILE, SKIPPED_LOG_FILE
-from crawler.logger import (
+from config import CONFIG, CONSOLE_LOG_FILE, SKIPPED_LOG_FILE
+from logger import (
     log_event, write_history_log, write_skipped_urls,
     reset_live_log_if_new_day, update_live_log,
     _reset_log_if_new_month, start_heartbeat, stop_heartbeat,
 )
-from crawler.scraper import get_subpages, assemble_text, get_content_hash
-from crawler.llm_client import analyze_with_telekom_llm, get_session_stats
-from crawler.database import get_db_connection
+from scraper import get_subpages, assemble_text, get_content_hash
+from llm_client import analyze_with_telekom_llm, get_session_stats
+from database import get_db_connection
 
 
 def is_duplicate(cursor, ags: str, massnahme: str, massnahme_start) -> bool:
@@ -76,7 +76,7 @@ def _save_content_hash(cursor, ags: str, content_hash: str):
 
 def _filter_changed_pages(html_pages: list, pdf_pages: list,
                           new_hashes: dict, old_hashes: dict):
-    from crawler.scraper import get_url_base
+    from scraper import get_url_base
     filtered_html = []
     filtered_pdf  = []
     unchanged     = 0
@@ -221,7 +221,7 @@ def run_crawler():
                 conn.commit()
                 continue
 
-            # --- Gesamt-Hash-Vergleich (jetzt in crawl_targets) ---
+            # --- Gesamt-Hash-Vergleich (in crawl_targets) ---
             content_hash  = get_content_hash(text_bulk)
             stored_hash   = _load_stored_content_hash(cursor, ags)
 
