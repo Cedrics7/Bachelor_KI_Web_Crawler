@@ -60,6 +60,7 @@ CONFIG = {
         "Neubau":          ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
         "Privatisierung":  ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
         "Tiefbau":         ["Tiefbau", "Straßenbau", "Kanalsanierung", "Brückenbau"],
+        "Ausschreibung": ["Ausschreibung", "Vergabe", "Öffentliche Auftragsvergabe", "Submission", "VOB", "DTVP"],
     },
 }
 
