@@ -3,9 +3,10 @@ scraper.py
 ==========
 Web-Scraping, PDF-Extraktion und Textzusammenstellung.
 
-Neu: get_subpages() gibt zusätzlich page_hashes zurück:
-     {url: sha256-hash} für jede erfolgreich gescrapte Seite/PDF.
-     Damit können einzelne Unterseiten auf Änderungen geprüft werden.
+Neu (v1.7): get_subpages() gibt zusätzlich page_hashes zurück.
+Neu (v1.8): Regex-Scan für PDF-Links im Rohtext (JS-gerenderte Seiten).
+            assemble_text() fügt Kontext-URL-Hinweis vor jedem PDF-Block ein,
+            damit das LLM die korrekte quelle_url zurückgibt.
 """
 
 import re
@@ -20,6 +21,9 @@ from config import CONFIG, IGNORIERE_PARAMS, PDF_PRIO_KEYWORDS
 from logger import log_event, _write_console_log, get_german_time
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+
+# Regex für absolute PDF-URLs im Rohtext (JS-gerenderte Links, data-Attribute, etc.)
+_PDF_URL_RE = re.compile(r'https?://[^\s"\' <>]+\.pdf', re.IGNORECASE)
 
 
 def get_pdf_year(url: str) -> int:
@@ -84,7 +88,7 @@ def get_subpages(start_url: str, max_pages: int):
         pdf_collected   – list[(url, text)]
         skipped_urls    – list[url]
         status_log      – dict{url: status_code/error}
-        page_hashes     – dict{url: sha256}  ← NEU
+        page_hashes     – dict{url: sha256}  (Unterseiten-Hashing)
     """
     visited_base   = set()
     visited_full   = set()
@@ -93,7 +97,7 @@ def get_subpages(start_url: str, max_pages: int):
     pdf_collected  = []
     skipped_urls   = []
     status_log     = {}
-    page_hashes    = {}          # NEU: url -> sha256 des Rohinhalts
+    page_hashes    = {}
     base_domain    = urlparse(start_url).netloc
     prio_keywords  = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
 
@@ -117,8 +121,8 @@ def get_subpages(start_url: str, max_pages: int):
                     continue
                 visited_base.add(final_base)
                 visited_full.add(resp.url)
+
             if resp.status_code == 200:
-                # Hash des Rohinhalts (vor Textextraktion) speichern
                 raw_hash = hashlib.sha256(resp.content).hexdigest()
                 page_hashes[curr_base] = raw_hash
 
@@ -129,18 +133,45 @@ def get_subpages(start_url: str, max_pages: int):
                 else:
                     html_collected.append((curr, extract_main_text(resp.text)))
                     soup = BeautifulSoup(resp.text, "html.parser")
+
+                    # --- BeautifulSoup: normale <a href> Links ---
+                    bs_links = set()
                     for link in soup.find_all("a", href=True):
-                        nxt      = urljoin(start_url, link["href"])
+                        nxt = urljoin(start_url, link["href"])
+                        bs_links.add(nxt)
+
+                    # --- Regex: PDF-URLs im Rohtext (JS-gerendert, data-Attribute, etc.) ---
+                    # Erfasst Links die nicht als <a href> im statischen HTML stehen,
+                    # z.B. window.open('...pdf'), data-href="...pdf" oder JSON-Payloads.
+                    regex_pdf_links = set()
+                    for raw_url in _PDF_URL_RE.findall(resp.text):
+                        # Nur Links der gleichen Domain übernehmen
+                        if urlparse(raw_url).netloc == base_domain:
+                            regex_pdf_links.add(raw_url)
+
+                    # Neue PDF-Links durch Regex? Kurze Info ins Log.
+                    neu_via_regex = regex_pdf_links - bs_links
+                    if neu_via_regex:
+                        log_event("🔎", f"Regex-Scan fand {len(neu_via_regex)} zus. PDF(s) "
+                                           f"auf {curr[:60]}: "
+                                           + ", ".join(u.split('/')[-1] for u in neu_via_regex))
+
+                    alle_links = bs_links | regex_pdf_links
+
+                    for nxt in alle_links:
                         nxt_base = get_url_base(nxt)
                         if (urlparse(nxt).netloc == base_domain
                                 and is_relevant_url(nxt)
                                 and nxt_base not in visited_base
                                 and nxt not in visited_full):
                             visited_full.add(nxt)
-                            if any(p in nxt.lower() for p in prio_keywords):
+                            # PDFs (inkl. via Regex gefundene) immer priorisieren
+                            if nxt.lower().endswith(".pdf") or any(
+                                    p in nxt.lower() for p in prio_keywords):
                                 to_visit.insert(0, nxt)
                             else:
                                 to_visit.append(nxt)
+
         except requests.exceptions.Timeout:
             status_log[curr] = "TIMEOUT"
         except requests.exceptions.ConnectionError:
@@ -163,9 +194,22 @@ def assemble_text(ort: str, html_pages: list, pdf_pages: list, limit: int):
     sortierte_pdfs = prio_pdfs + normale_pdfs
     verbleibend    = limit - len(text_bulk)
 
+    def _pdf_block(url: str, content: str) -> str:
+        """
+        Baut den Text-Block für eine PDF inkl. explizitem Kontext-Hinweis.
+        Der Hinweis stellt sicher, dass das LLM als quelle_url die direkte
+        PDF-URL zurückgibt – auch wenn die PDF über eine Zwischen-Seite
+        verlinkt war (JS-Rendering, data-href, etc.).
+        """
+        return (
+            f"\n--- URL: {url} ---"
+            f"\n[QUELLE: Direkte PDF-URL ist {url} – diese URL als quelle_url verwenden]\n"
+            f"{content}"
+        )
+
     if sum(len(t) for _, t in sortierte_pdfs) <= verbleibend:
         for url, content in sortierte_pdfs:
-            text_bulk += f"\n--- URL: {url} ---\n{content}"
+            text_bulk += _pdf_block(url, content)
         return text_bulk, False, False
 
     for reduzierte_seiten in [3, 2, 1]:
@@ -174,7 +218,7 @@ def assemble_text(ort: str, html_pages: list, pdf_pages: list, limit: int):
             log_event("⚠️", f"PDFs auf {reduzierte_seiten} Seite(n) gekürzt für {ort}")
             for url, content in neu_pdf:
                 if content:
-                    text_bulk += f"\n--- URL: {url} ---\n{content}"
+                    text_bulk += _pdf_block(url, content)
             return text_bulk, True, False
 
     return text_bulk[:limit], True, True
