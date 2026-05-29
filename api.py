@@ -190,6 +190,32 @@ def get_bewegungsdaten(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/bestandsdaten/{item_id}")
+def get_bestandsdaten_by_id(item_id: int):
+    """Gibt einen einzelnen Bestandsdatensatz anhand seiner ID zurück."""
+    try:
+        conn = get_db_connection(as_dict=True)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, ort, ags, bundesland, last_scanned, url FROM crawl_targets WHERE id = %s",
+            (item_id,)
+        )
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+        item = dict(row)
+        if item.get('last_scanned'):
+            item['last_scanned'] = item['last_scanned'].strftime('%d.%m.%Y %H:%M')
+        else:
+            item['last_scanned'] = '-'
+        return item
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/bestandsdaten")
 def get_bestandsdaten(
         page: int = Query(1, ge=1),

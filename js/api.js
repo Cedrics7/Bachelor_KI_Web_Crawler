@@ -20,6 +20,10 @@ function fetchBestandsdaten({ page = 1, page_size = 50, search = '', status = 'A
     return _get(`/api/bestandsdaten?${p}`);
 }
 
+function fetchBestandsdatenById(id) {
+    return _get(`/api/bestandsdaten/${encodeURIComponent(id)}`);
+}
+
 function fetchBewegungsdaten({ page = 1, page_size = 50, search = '', bl = 'Alle', kat = 'Alle', sort = 'desc' } = {}) {
     const p = new URLSearchParams({ page, page_size, sort });
     if (search)         p.set('search',     search);

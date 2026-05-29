@@ -175,6 +175,8 @@ async function loadChangelog() {
 
 /* ----------------------------------------------------------
    Modal laden
+   Fix: Direkte ID-Abfrage statt Table-Scan, damit das Modal
+   auch bei aktivem Filter korrekt öffnet.
 ---------------------------------------------------------- */
 async function loadModal(id, idtype) {
     try {
@@ -187,8 +189,8 @@ async function loadModal(id, idtype) {
             }
             if (found) renderModalBewegung(found);
         } else {
-            const data = await fetchBestandsdaten({ search: null, status: 'Alle', page: 1, page_size: 500 });
-            const row  = data.items?.find((r) => String(r.id) === String(id));
+            // Direkte ID-Abfrage – unabhängig von aktiven Filtern
+            const row = await fetchBestandsdatenById(id);
             if (row) renderModal(row);
         }
     } catch (err) { console.error('Modal:', err); }
