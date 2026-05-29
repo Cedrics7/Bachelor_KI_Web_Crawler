@@ -9,8 +9,8 @@ import threading
 from collections import deque
 from datetime import date
 
-from crawler.config import CONFIG
-from crawler.logger import log_event
+from config import CONFIG
+from logger import log_event
 
 
 class TokenManager:

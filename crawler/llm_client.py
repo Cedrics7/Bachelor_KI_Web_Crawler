@@ -5,6 +5,8 @@ Telekom LLM API: HTTP-Call, Kostentracking, Retry-Logik, Prompt-Builder,
 JSON-Parser und parallele Analyse (ThreadPoolExecutor).
 
 Neu: Chunking mit Overlap
+  Jeder Chunk enthält die letzten `chunk_overlap` Zeichen des vorherigen
+  Chunks als Kontext-Prefix, damit kein Kontextverlust an Chunk-Grenzen.
 """
 
 import re
@@ -54,6 +56,7 @@ def log_cost_event(ort: str, chunk_idx: int, cost: float):
 
 
 def get_session_stats() -> tuple:
+    """Gibt (_session_cost, _session_requests) zurück."""
     with _cost_lock:
         return _session_cost, _session_requests
 
@@ -113,25 +116,46 @@ def sanitize_date(val) -> str | None:
 # Chunking mit Overlap
 # ---------------------------------------------------------------
 def _make_chunks(text: str, chunk_size: int, overlap: int) -> list:
+    """
+    Teilt `text` in Chunks der Größe `chunk_size` auf.
+    Jeder Chunk (ab dem zweiten) beginnt mit den letzten `overlap`
+    Zeichen des vorherigen Chunks als Kontext-Prefix.
+
+    Beispiel (chunk_size=400_000, overlap=5_000):
+      Chunk 1: text[0:400_000]
+      Chunk 2: text[395_000:795_000]   (5.000 Zeichen Überlapp)
+      Chunk 3: text[790_000:1_190_000]
+      ...
+
+    Der Overlap-Block wird im Prompt deutlich als
+    "[KONTEXT AUS VORHERIGEM CHUNK]" markiert, damit das Modell
+    ihn nicht doppelt als neue Maßnahmen interpretiert.
+    """
     if overlap >= chunk_size:
-        overlap = chunk_size // 10
+        overlap = chunk_size // 10  # Fallback: max 10% Overlap
+
     chunks   = []
     step     = chunk_size - overlap
     pos      = 0
     prev_end = 0
+
     while pos < len(text):
         chunk_end = pos + chunk_size
         raw_chunk = text[pos:chunk_end]
+
         if chunks and overlap > 0:
+            # Overlap-Block als Kontext markieren
             ctx_block = (
                 "[KONTEXT AUS VORHERIGEM CHUNK – NICHT ERNEUT AUSWERTEN]\n"
                 + text[prev_end - overlap:prev_end]
                 + "\n[ENDE KONTEXT]\n\n"
             )
             raw_chunk = ctx_block + raw_chunk
+
         chunks.append(raw_chunk)
         prev_end = chunk_end
         pos     += step
+
     return chunks
 
 
@@ -164,8 +188,8 @@ KATEGORIEN:
 ZEITRAUM-FILTER (Stichtag heute: {today_str}):
 - Erfasse NUR Maßnahmen die NOCH LAUFEN oder IN DER ZUKUNFT liegen.
 - "massnahme_ende" vorhanden UND liegt VOR {today_str} → Maßnahme WEGLASSEN (abgeschlossen).
-- Nur Startdatum vorhanden, älter als 3 Jahre (vor {cutoff_str}) → WEGLASSEN.
-- Laufende Maßnahmen ohne Enddatum (null) → IMMER erfassen, egal wie alt der Start ist.
+- Nur Startdatum vorhanden, älter als 1 Jahre (vor {cutoff_str}) → WEGLASSEN.
+
 
 WICHTIG:
         - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
@@ -201,9 +225,11 @@ def _sanitize_json_string(raw: str) -> str:
     raw = re.sub(r'```(?:json)?\s*', '', raw)
     raw = raw.replace("```", "").strip()
     raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
+
     match = re.search(r'(\{.*\})', raw, re.DOTALL)
     if match:
         raw = match.group(1)
+
     result  = []
     in_str  = False
     escaped = False
@@ -225,6 +251,7 @@ def _sanitize_json_string(raw: str) -> str:
             continue
         result.append(ch)
     raw = ''.join(result)
+
     raw = re.sub(r',\s*(\}|\])', r'\1', raw)
     raw = re.sub(
         r'("|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*\n(\s*")',
@@ -263,6 +290,7 @@ def _parse_massnahmen(raw: str, start_url: str) -> list:
             return _apply(result)
     except json.JSONDecodeError:
         pass
+
     try:
         repaired = _sanitize_json_string(raw)
         parsed   = json.loads(repaired)
@@ -271,6 +299,7 @@ def _parse_massnahmen(raw: str, start_url: str) -> list:
             return _apply(result)
     except json.JSONDecodeError as e:
         log_event("⚠️", f"JSON-Repair Stufe 2 fehlgeschlagen ({e}) – versuche Regex-Extraktion")
+
     try:
         obj_pattern = re.compile(r'\{[^{}]*"massnahme"\s*:\s*"[^"]*"[^{}]*\}', re.DOTALL)
         gefunden    = []
@@ -286,6 +315,7 @@ def _parse_massnahmen(raw: str, start_url: str) -> list:
             return _apply(gefunden)
     except Exception as e2:
         log_event("❌", f"Regex-Extraktion fehlgeschlagen: {e2}")
+
     snippet = raw[:300].replace("\n", " ")
     log_event("❌", f"JSON-Parsing komplett fehlgeschlagen. Antwort-Snippet: {snippet}")
     return []
@@ -310,20 +340,25 @@ def analyze_with_telekom_llm(gesammelter_text: str, start_url: str) -> list:
     overlap     = CONFIG.get("chunk_overlap", 5_000)
     max_workers = CONFIG["llm_parallel_workers"]
     chunks      = _make_chunks(gesammelter_text, chunk_size, overlap)
+
     if not chunks:
         return []
+
     if len(chunks) == 1:
         log_event("🤖", f"Einzelner Chunk ({len(gesammelter_text):,} Zeichen) → 1 LLM-Call")
     else:
         log_event("📄", f"Text ({len(gesammelter_text):,} Zeichen) → {len(chunks)} Chunks "
                        f"(Overlap: {overlap:,} Zeichen), parallel mit {max_workers} Workern")
+
     context_win     = ContextWindow(max_size=CONFIG["context_window_size"])
     alle_massnahmen = []
     ort_label       = urlparse(start_url).netloc
+
     for gruppe_start in range(0, len(chunks), max_workers):
         gruppe = list(enumerate(chunks[gruppe_start:gruppe_start + max_workers],
                                 start=gruppe_start + 1))
         futures_map = {}
+
         with ThreadPoolExecutor(max_workers=min(max_workers, len(gruppe))) as executor:
             for chunk_idx, chunk_text in gruppe:
                 est_tokens = len(chunk_text) // 4
@@ -334,6 +369,7 @@ def analyze_with_telekom_llm(gesammelter_text: str, start_url: str) -> list:
                 futures_map[executor.submit(
                     _call_telekom_llm, prompt, est_tokens, chunk_idx, ort_label
                 )] = chunk_idx
+
             chunk_results = {}
             for future in as_completed(futures_map):
                 cidx = futures_map[future]
@@ -353,10 +389,12 @@ def analyze_with_telekom_llm(gesammelter_text: str, start_url: str) -> list:
                 except Exception as e:
                     log_event("❌", f"Chunk {cidx} Future-Fehler: {e}")
                     chunk_results[cidx] = []
+
         for chunk_idx, _ in gruppe:
             massnahmen = chunk_results.get(chunk_idx, [])
             alle_massnahmen.extend(massnahmen)
             context_win.add(massnahmen)
+
     unique = deduplicate_massnahmen(alle_massnahmen)
     log_event("🔗", f"Gesamt: {len(alle_massnahmen)} Roh-Funde → {len(unique)} nach Dedup | "
                    f"Session-Kosten bisher: {_session_cost:.6f} $")
@@ -379,6 +417,7 @@ def _call_telekom_llm(prompt: str, est_tokens: int, chunk_idx: int, ort: str):
     }
     retries = CONFIG["llm_retries"]
     delays  = CONFIG["llm_retry_delays"]
+
     for versuch in range(retries + 1):
         try:
             resp = requests.post(
@@ -387,15 +426,18 @@ def _call_telekom_llm(prompt: str, est_tokens: int, chunk_idx: int, ort: str):
             )
             cost = record_cost(dict(resp.headers))
             log_cost_event(ort, chunk_idx, cost)
+
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", delays[min(versuch, len(delays)-1)]))
                 log_event("⏳", f"429 Too Many Requests – warte {wait}s ...")
                 time.sleep(wait)
                 continue
+
             resp.raise_for_status()
             api_guard.update_usage(est_tokens)
             content = resp.json()["choices"][0]["message"]["content"]
             return content, cost
+
         except requests.exceptions.HTTPError as e:
             if versuch < retries:
                 wait = delays[min(versuch, len(delays)-1)]
@@ -410,4 +452,5 @@ def _call_telekom_llm(prompt: str, est_tokens: int, chunk_idx: int, ort: str):
                 time.sleep(wait)
             else:
                 log_event("❌", f"Unbekannter Fehler Chunk {chunk_idx}: {e}")
+
     return None, 0.0

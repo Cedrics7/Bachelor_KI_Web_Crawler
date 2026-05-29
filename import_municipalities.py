@@ -7,7 +7,7 @@ Ausführen: python import_municipalities.py
 
 import csv
 from dotenv import load_dotenv
-from database import get_db_connection
+from crawler.database import get_db_connection
 
 load_dotenv()
 

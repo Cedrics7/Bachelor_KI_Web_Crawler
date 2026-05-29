@@ -17,8 +17,8 @@ import warnings
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 
-from crawler.config import CONFIG, IGNORIERE_PARAMS, PDF_PRIO_KEYWORDS
-from crawler.logger import log_event, _write_console_log, get_german_time
+from config import CONFIG, IGNORIERE_PARAMS, PDF_PRIO_KEYWORDS
+from logger import log_event, _write_console_log, get_german_time
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -37,6 +37,7 @@ def is_prio_pdf(url: str) -> bool:
 
 
 def get_content_hash(text: str) -> str:
+    """SHA-256 Hash eines Textes (für Gesamt-Hash der gesammelten Inhalte)."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -79,6 +80,16 @@ def extract_pdf_text(url: str, max_pages: int) -> str:
 
 
 def get_subpages(start_url: str, max_pages: int):
+    """
+    Crawlt Unterseiten und PDFs.
+
+    Rückgabe:
+        html_collected  – list[(url, text)]
+        pdf_collected   – list[(url, text)]
+        skipped_urls    – list[url]
+        status_log      – dict{url: status_code/error}
+        page_hashes     – dict{url: sha256}  (Unterseiten-Hashing)
+    """
     visited_base   = set()
     visited_full   = set()
     to_visit       = [start_url]
@@ -123,21 +134,27 @@ def get_subpages(start_url: str, max_pages: int):
                     html_collected.append((curr, extract_main_text(resp.text)))
                     soup = BeautifulSoup(resp.text, "html.parser")
 
+                    # --- BeautifulSoup: normale <a href> Links ---
                     bs_links = set()
                     for link in soup.find_all("a", href=True):
                         nxt = urljoin(start_url, link["href"])
                         bs_links.add(nxt)
 
+                    # --- Regex: PDF-URLs im Rohtext (JS-gerendert, data-Attribute, etc.) ---
+                    # Erfasst Links die nicht als <a href> im statischen HTML stehen,
+                    # z.B. window.open('...pdf'), data-href="...pdf" oder JSON-Payloads.
                     regex_pdf_links = set()
                     for raw_url in _PDF_URL_RE.findall(resp.text):
+                        # Nur Links der gleichen Domain übernehmen
                         if urlparse(raw_url).netloc == base_domain:
                             regex_pdf_links.add(raw_url)
 
+                    # Neue PDF-Links durch Regex? Kurze Info ins Log.
                     neu_via_regex = regex_pdf_links - bs_links
                     if neu_via_regex:
                         log_event("🔎", f"Regex-Scan fand {len(neu_via_regex)} zus. PDF(s) "
-                                       f"auf {curr[:60]}: "
-                                       + ", ".join(u.split('/')[-1] for u in neu_via_regex))
+                                           f"auf {curr[:60]}: "
+                                           + ", ".join(u.split('/')[-1] for u in neu_via_regex))
 
                     alle_links = bs_links | regex_pdf_links
 
@@ -148,6 +165,7 @@ def get_subpages(start_url: str, max_pages: int):
                                 and nxt_base not in visited_base
                                 and nxt not in visited_full):
                             visited_full.add(nxt)
+                            # PDFs (inkl. via Regex gefundene) immer priorisieren
                             if nxt.lower().endswith(".pdf") or any(
                                     p in nxt.lower() for p in prio_keywords):
                                 to_visit.insert(0, nxt)
@@ -177,6 +195,12 @@ def assemble_text(ort: str, html_pages: list, pdf_pages: list, limit: int):
     verbleibend    = limit - len(text_bulk)
 
     def _pdf_block(url: str, content: str) -> str:
+        """
+        Baut den Text-Block für eine PDF inkl. explizitem Kontext-Hinweis.
+        Der Hinweis stellt sicher, dass das LLM als quelle_url die direkte
+        PDF-URL zurückgibt – auch wenn die PDF über eine Zwischen-Seite
+        verlinkt war (JS-Rendering, data-href, etc.).
+        """
         return (
             f"\n--- URL: {url} ---"
             f"\n[QUELLE: Direkte PDF-URL ist {url} – diese URL als quelle_url verwenden]\n"
