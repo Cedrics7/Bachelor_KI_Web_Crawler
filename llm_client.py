@@ -3,6 +3,10 @@ llm_client.py
 =============
 Telekom LLM API: HTTP-Call, Kostentracking, Retry-Logik, Prompt-Builder,
 JSON-Parser und parallele Analyse (ThreadPoolExecutor).
+
+Neu: Chunking mit Overlap
+  Jeder Chunk enthält die letzten `chunk_overlap` Zeichen des vorherigen
+  Chunks als Kontext-Prefix, damit kein Kontextverlust an Chunk-Grenzen.
 """
 
 import re
@@ -52,7 +56,7 @@ def log_cost_event(ort: str, chunk_idx: int, cost: float):
 
 
 def get_session_stats() -> tuple:
-    """Gibt (_session_cost, _session_requests) zurück – für Summary in run_crawler."""
+    """Gibt (_session_cost, _session_requests) zurück."""
     with _cost_lock:
         return _session_cost, _session_requests
 
@@ -61,12 +65,6 @@ def get_session_stats() -> tuple:
 # Rolling Context Window
 # ---------------------------------------------------------------
 class ContextWindow:
-    """
-    Merkt sich die letzten N gefundenen Maßnahmen (Kurztexte) und
-    reicht sie als Hinweis in jeden Folge-Prompt ein, damit das Modell
-    keine chunk-übergreifenden Duplikate produziert.
-    """
-
     def __init__(self, max_size: int = 5):
         self.max_size = max_size
         self._items: deque = deque(maxlen=max_size)
@@ -115,7 +113,54 @@ def sanitize_date(val) -> str | None:
 
 
 # ---------------------------------------------------------------
-# Prompt-Builder  (inkl. ZEITRAUM-FILTER wie im Original)
+# Chunking mit Overlap
+# ---------------------------------------------------------------
+def _make_chunks(text: str, chunk_size: int, overlap: int) -> list:
+    """
+    Teilt `text` in Chunks der Größe `chunk_size` auf.
+    Jeder Chunk (ab dem zweiten) beginnt mit den letzten `overlap`
+    Zeichen des vorherigen Chunks als Kontext-Prefix.
+
+    Beispiel (chunk_size=400_000, overlap=5_000):
+      Chunk 1: text[0:400_000]
+      Chunk 2: text[395_000:795_000]   (5.000 Zeichen Überlapp)
+      Chunk 3: text[790_000:1_190_000]
+      ...
+
+    Der Overlap-Block wird im Prompt deutlich als
+    "[KONTEXT AUS VORHERIGEM CHUNK]" markiert, damit das Modell
+    ihn nicht doppelt als neue Maßnahmen interpretiert.
+    """
+    if overlap >= chunk_size:
+        overlap = chunk_size // 10  # Fallback: max 10% Overlap
+
+    chunks   = []
+    step     = chunk_size - overlap
+    pos      = 0
+    prev_end = 0
+
+    while pos < len(text):
+        chunk_end = pos + chunk_size
+        raw_chunk = text[pos:chunk_end]
+
+        if chunks and overlap > 0:
+            # Overlap-Block als Kontext markieren
+            ctx_block = (
+                "[KONTEXT AUS VORHERIGEM CHUNK – NICHT ERNEUT AUSWERTEN]\n"
+                + text[prev_end - overlap:prev_end]
+                + "\n[ENDE KONTEXT]\n\n"
+            )
+            raw_chunk = ctx_block + raw_chunk
+
+        chunks.append(raw_chunk)
+        prev_end = chunk_end
+        pos     += step
+
+    return chunks
+
+
+# ---------------------------------------------------------------
+# Prompt-Builder
 # ---------------------------------------------------------------
 def _build_prompt(chunk_text: str, start_url: str, context_window: ContextWindow,
                   chunk_idx: int) -> str:
@@ -134,6 +179,8 @@ STRIKTE AUSSCHLUSSKRITERIEN - ignoriere komplett:
 - Kursangebote, Wellness, Thermalbad, medizinische Pläne
 - Stellenausschreibungen, reine Dienstleistungen (z.B. Winterdienst)
 - Kulturelle Veranstaltungen, Feste, Sitzungstermine
+- Abschnitte mit der Markierung [KONTEXT AUS VORHERIGEM CHUNK] – diese nur
+  zur Orientierung nutzen, NICHT erneut als neue Maßnahmen erfassen.
 {ctx_hint}
 KATEGORIEN:
 {kategorien_string}
@@ -175,15 +222,6 @@ Texte (Chunk {chunk_idx}):
 # JSON-Bereinigung & Parsing
 # ---------------------------------------------------------------
 def _sanitize_json_string(raw: str) -> str:
-    r"""
-    Bereinigungsschritte für Gemini-2.5-pro-Ausgaben:
-    1. Markdown-Fences entfernen
-    2. Thinking-Tags (<think>...</think>) entfernen
-    3. Ersten vollständigen JSON-Block extrahieren
-    4. Echte Steuerzeichen (\n/\t/\r) in String-Values durch Leerzeichen ersetzen
-    5. Trailing Commas reparieren  (,  } / ,  ])
-    6. Fehlende Kommas zwischen Feldern einfügen  ("val"\n"key" → "val",\n"key")
-    """
     raw = re.sub(r'```(?:json)?\s*', '', raw)
     raw = raw.replace("```", "").strip()
     raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
@@ -233,12 +271,6 @@ def _extract_massnahmen_from_parsed(data: dict) -> list:
 
 
 def _parse_massnahmen(raw: str, start_url: str) -> list:
-    """
-    Robust JSON parser mit drei Fallback-Stufen:
-    1. Direktes json.loads nach einfacher Bereinigung
-    2. json.loads nach vollständiger Reparatur
-    3. Regex-Extraktion einzelner Maßnahmen-Objekte als letzter Ausweg
-    """
     if not raw:
         return []
 
@@ -304,16 +336,10 @@ def deduplicate_massnahmen(massnahmen: list) -> list:
 
 
 def analyze_with_telekom_llm(gesammelter_text: str, start_url: str) -> list:
-    """
-    1. Text → Chunks
-    2. Chunks in Gruppen parallel an Telekom LLM senden (ThreadPoolExecutor)
-    3. Nach jeder Gruppe: ContextWindow mit Ergebnissen befüllen
-    4. Ergebnisse mergen + deduplizieren
-    """
     chunk_size  = CONFIG["chunk_size"]
+    overlap     = CONFIG.get("chunk_overlap", 5_000)
     max_workers = CONFIG["llm_parallel_workers"]
-    chunks      = [gesammelter_text[i:i + chunk_size]
-                   for i in range(0, len(gesammelter_text), chunk_size)]
+    chunks      = _make_chunks(gesammelter_text, chunk_size, overlap)
 
     if not chunks:
         return []
@@ -321,8 +347,8 @@ def analyze_with_telekom_llm(gesammelter_text: str, start_url: str) -> list:
     if len(chunks) == 1:
         log_event("🤖", f"Einzelner Chunk ({len(gesammelter_text):,} Zeichen) → 1 LLM-Call")
     else:
-        log_event("📄", f"Text ({len(gesammelter_text):,} Zeichen) → {len(chunks)} Chunks, "
-                       f"parallel mit {max_workers} Workern")
+        log_event("📄", f"Text ({len(gesammelter_text):,} Zeichen) → {len(chunks)} Chunks "
+                       f"(Overlap: {overlap:,} Zeichen), parallel mit {max_workers} Workern")
 
     context_win     = ContextWindow(max_size=CONFIG["context_window_size"])
     alle_massnahmen = []
@@ -351,8 +377,7 @@ def analyze_with_telekom_llm(gesammelter_text: str, start_url: str) -> list:
                     raw, cost = future.result()
                     if raw:
                         try:
-                            debug_path = f"llm_debug_chunk{cidx}.txt"
-                            with open(debug_path, "w", encoding="utf-8") as _dbg:
+                            with open(f"llm_debug_chunk{cidx}.txt", "w", encoding="utf-8") as _dbg:
                                 _dbg.write(f"=== {ort_label} | Chunk {cidx} ===\n")
                                 _dbg.write(raw)
                         except Exception:
@@ -380,7 +405,6 @@ def analyze_with_telekom_llm(gesammelter_text: str, start_url: str) -> list:
 # LLM-Call
 # ---------------------------------------------------------------
 def _call_telekom_llm(prompt: str, est_tokens: int, chunk_idx: int, ort: str):
-    """Einzelner LLM-Call an die Telekom API. Gibt (raw_text, cost) zurück."""
     headers = {
         "Authorization": f"Bearer {TELEKOM_API_KEY}",
         "Content-Type":  "application/json",

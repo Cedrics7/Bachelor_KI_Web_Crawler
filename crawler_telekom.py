@@ -2,17 +2,15 @@
 crawler_telekom.py
 ==================
 Haupt-Loop des Telekom-Crawlers.
-Importiert alle Teilmodule und orchestriert den Ablauf.
 
-Modulstruktur:
-  config.py       – Konfiguration, API-Keys, Konstanten
-  logger.py       – Logging, Live-Status, Heartbeat
-  rate_limiter.py – TokenManager (RPM / TPM / RPD)
-  scraper.py      – Web-Scraping, PDF-Extraktion, Textzusammenstellung
-  llm_client.py   – LLM-Call, Kostentracking, JSON-Parsing, Analyse
-  crawler_telekom.py (diese Datei) – DB-Abfrage, Haupt-Loop
+Neu:
+- Unterseiten-Hashing: page_hashes werden in crawl_targets.subpage_hashes
+  (JSON) gespeichert. Unveränderte Unterseiten werden beim nächsten Lauf
+  aus dem Text-Bulk herausgefiltert (Effizienz-Optimierung).
+- force_ags: AGS-IDs die immer gecrawlt werden (last_scanned ignoriert).
 """
 
+import json
 import time
 from datetime import datetime
 
@@ -41,25 +39,67 @@ def is_duplicate(cursor, ags: str, massnahme: str, massnahme_start) -> bool:
     return cursor.fetchone() is not None
 
 
+def _load_stored_page_hashes(cursor, ags: str) -> dict:
+    """Liest die gespeicherten Unterseiten-Hashes aus crawl_targets."""
+    cursor.execute(
+        "SELECT subpage_hashes FROM crawl_targets WHERE ags = %s", (ags,)
+    )
+    row = cursor.fetchone()
+    if row and row[0]:
+        try:
+            return json.loads(row[0]) if isinstance(row[0], str) else row[0]
+        except Exception:
+            pass
+    return {}
+
+
+def _save_page_hashes(cursor, ags: str, page_hashes: dict):
+    """Speichert die aktuellen Unterseiten-Hashes in crawl_targets."""
+    cursor.execute(
+        "UPDATE crawl_targets SET subpage_hashes = %s WHERE ags = %s",
+        (json.dumps(page_hashes, ensure_ascii=False), ags)
+    )
+
+
+def _filter_changed_pages(html_pages: list, pdf_pages: list,
+                          new_hashes: dict, old_hashes: dict):
+    """
+    Filtert HTML- und PDF-Seiten heraus, deren Hash sich nicht geändert hat.
+    Gibt nur die geänderten/neuen Seiten zurück, plus Statistik.
+    """
+    from scraper import get_url_base
+
+    filtered_html = []
+    filtered_pdf  = []
+    unchanged     = 0
+
+    for url, text in html_pages:
+        url_key = get_url_base(url)
+        if old_hashes.get(url_key) == new_hashes.get(url_key):
+            unchanged += 1
+        else:
+            filtered_html.append((url, text))
+
+    for url, text in pdf_pages:
+        url_key = get_url_base(url)
+        if old_hashes.get(url_key) == new_hashes.get(url_key):
+            unchanged += 1
+        else:
+            filtered_pdf.append((url, text))
+
+    return filtered_html, filtered_pdf, unchanged
+
+
 def _fetch_targets(cursor) -> list:
     """
     Lädt Crawl-Targets aus der DB.
-
-    Logik:
-      - force_ags (aus CONFIG): Diese AGS-IDs werden IMMER geladen,
-        unabhängig von last_scanned. Sie kommen an den Anfang der Liste.
-      - Normale Targets: sortiert nach last_scanned ASC NULLS FIRST,
-        begrenzt auf max_targets.
-      - Wenn force_ags leer ist: nur normale Logik.
+    force_ags (CONFIG): immer laden, last_scanned wird ignoriert.
     """
     force_ags   = CONFIG.get("force_ags") or []
     max_targets = CONFIG["max_targets"]
     prio_region = CONFIG.get("prio_region", "")
 
-    forced_rows  = []
-    normal_rows  = []
-
-    # --- 1. force_ags laden (last_scanned wird ignoriert) ---
+    forced_rows = []
     if force_ags:
         placeholders = ",".join(["%s"] * len(force_ags))
         cursor.execute(
@@ -71,7 +111,6 @@ def _fetch_targets(cursor) -> list:
             log_event("📌", f"force_ags: {len(forced_rows)} Target(s) erzwungen: "
                            f"{[r[2] for r in forced_rows]}")
 
-    # --- 2. Normale Targets (ohne die force_ags, damit keine Dopplung) ---
     exclude_ags = list(force_ags) if force_ags else []
 
     if prio_region:
@@ -114,8 +153,6 @@ def _fetch_targets(cursor) -> list:
                 (max_targets,)
             )
     normal_rows = cursor.fetchall()
-
-    # force_ags zuerst, dann normale Targets
     return forced_rows + normal_rows
 
 
@@ -125,9 +162,8 @@ def run_crawler():
     reset_live_log_if_new_day()
 
     heartbeat = start_heartbeat()
-
-    conn   = get_db_connection()
-    cursor = conn.cursor()
+    conn      = get_db_connection()
+    cursor    = conn.cursor()
 
     targets_processed = 0
     total_funde       = 0
@@ -146,10 +182,10 @@ def run_crawler():
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
 
     log_event("ℹ️", f"Modell: {CONFIG['llm_model']} | "
-                   f"Chunk-Größe: {CONFIG['chunk_size']:,} Zeichen | "
-                   f"Kontext-Fenster: {CONFIG['context_window_size']} Einträge | "
-                   f"Parallel-Worker: {CONFIG['llm_parallel_workers']} | "
-                   f"Targets geladen: {len(targets)}")
+                   f"Chunk-Größe: {CONFIG['chunk_size']:,} | "
+                   f"Overlap: {CONFIG['chunk_overlap']:,} Zeichen | "
+                   f"Worker: {CONFIG['llm_parallel_workers']} | "
+                   f"Targets: {len(targets)}")
 
     try:
         for ags, start_url, ort in targets:
@@ -160,12 +196,23 @@ def run_crawler():
             update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
             targets_processed += 1
 
-            html_pages, pdf_pages, skipped_urls, status_log = get_subpages(
+            html_pages, pdf_pages, skipped_urls, status_log, page_hashes = get_subpages(
                 start_url, CONFIG["max_subpages"]
             )
             write_skipped_urls(ort, skipped_urls)
             if skipped_urls:
                 log_event("🔗", f"{len(skipped_urls)} URL(s) per Dedup übersprungen")
+
+            # --- Unterseiten-Hash-Filter ---
+            old_hashes = _load_stored_page_hashes(cursor, ags)
+            if old_hashes and not is_forced:
+                html_pages, pdf_pages, unchanged_count = _filter_changed_pages(
+                    html_pages, pdf_pages, page_hashes, old_hashes
+                )
+                if unchanged_count:
+                    log_event("🔒", f"{unchanged_count} unveränderte Unterseite(n) übersprungen.")
+            # Neue Hashes immer speichern (auch wenn geförzt)
+            _save_page_hashes(cursor, ags, page_hashes)
 
             text_bulk, hat_gekuerzt, hat_verworfen = assemble_text(
                 ort, html_pages, pdf_pages, CONFIG["max_text_chars"]
@@ -176,18 +223,19 @@ def run_crawler():
                 fehler_info  = ", ".join(str(c) for c in sorted(fehler_codes, key=str))
                 log_event("⚠️", f"Kein Text für {ort}. Status-Codes: [{fehler_info}]")
                 update_live_log(ort, f"⚠️ Kein Text [{fehler_info}]")
+                # Hashes trotzdem committen
+                conn.commit()
                 continue
 
             content_hash = get_content_hash(text_bulk)
             cursor.execute("SELECT id FROM crawl_results WHERE content_hash = %s", (content_hash,))
 
             if cursor.fetchone() and not is_forced:
-                # Hash-Match: Inhalt unverändert UND kein Force → überspringen
-                log_event("🔒", f"Keine Änderungen in {ort} (Hash-Match).")
+                log_event("🔒", f"Keine Änderungen in {ort} (Gesamt-Hash-Match).")
                 update_live_log(ort, "✅ Stand aktuell (Hash-Match)", gespart=True)
             else:
-                if is_forced and cursor.fetchone():
-                    log_event("📌", f"{ort}: Hash-Match, aber FORCE → Analyse wird trotzdem durchgeführt.")
+                if is_forced:
+                    log_event("📌", f"{ort}: FORCE → Analyse wird durchgeführt.")
 
                 log_event("🤖", f"Analyse {ort} → {CONFIG['llm_model']} ...")
                 update_live_log(ort, f"🤖 LLM-Analyse ({CONFIG['llm_model']})...")

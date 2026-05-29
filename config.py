@@ -21,7 +21,11 @@ CONFIG = {
     "min_end_datum":           str(date.today()),
     "min_pdf_year":            2024,
     "max_text_chars":          5_000_000,
-    "chunk_size":              400_000,
+
+    # Chunking
+    "chunk_size":              400_000,   # Zeichen pro Chunk
+    "chunk_overlap":           5_000,     # Kontext-Überlapp zum vorherigen Chunk
+
     "llm_parallel_workers":    4,
     "context_window_size":     5,
     "llm_model":               "gemini-2.5-pro",
@@ -33,12 +37,9 @@ CONFIG = {
     "rpd_limit":               500,
     "prio_region":             "",
 
-    # -------------------------------------------------------------------
-    # force_ags: Liste von AGS-IDs die IMMER gecrawlt werden,
-    # unabhängig vom letzten Scan-Zeitpunkt (last_scanned wird ignoriert).
+    # force_ags: AGS-IDs die immer gecrawlt werden (last_scanned ignoriert).
     # Leer lassen [] für normale Crawl-Logik.
     # Beispiel: ["09162000", "05315000"]
-    # -------------------------------------------------------------------
     "force_ags":               [],
 
     "ziel_kategorien": {

@@ -2,6 +2,10 @@
 scraper.py
 ==========
 Web-Scraping, PDF-Extraktion und Textzusammenstellung.
+
+Neu: get_subpages() gibt zusätzlich page_hashes zurück:
+     {url: sha256-hash} für jede erfolgreich gescrapte Seite/PDF.
+     Damit können einzelne Unterseiten auf Änderungen geprüft werden.
 """
 
 import re
@@ -29,6 +33,7 @@ def is_prio_pdf(url: str) -> bool:
 
 
 def get_content_hash(text: str) -> str:
+    """SHA-256 Hash eines Textes (für Gesamt-Hash der gesammelten Inhalte)."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -71,6 +76,16 @@ def extract_pdf_text(url: str, max_pages: int) -> str:
 
 
 def get_subpages(start_url: str, max_pages: int):
+    """
+    Crawlt Unterseiten und PDFs.
+
+    Rückgabe:
+        html_collected  – list[(url, text)]
+        pdf_collected   – list[(url, text)]
+        skipped_urls    – list[url]
+        status_log      – dict{url: status_code/error}
+        page_hashes     – dict{url: sha256}  ← NEU
+    """
     visited_base   = set()
     visited_full   = set()
     to_visit       = [start_url]
@@ -78,6 +93,7 @@ def get_subpages(start_url: str, max_pages: int):
     pdf_collected  = []
     skipped_urls   = []
     status_log     = {}
+    page_hashes    = {}          # NEU: url -> sha256 des Rohinhalts
     base_domain    = urlparse(start_url).netloc
     prio_keywords  = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
 
@@ -102,6 +118,10 @@ def get_subpages(start_url: str, max_pages: int):
                 visited_base.add(final_base)
                 visited_full.add(resp.url)
             if resp.status_code == 200:
+                # Hash des Rohinhalts (vor Textextraktion) speichern
+                raw_hash = hashlib.sha256(resp.content).hexdigest()
+                page_hashes[curr_base] = raw_hash
+
                 if curr.lower().endswith(".pdf"):
                     text = extract_pdf_text(curr, CONFIG["max_pdf_pages"])
                     if text:
@@ -128,7 +148,7 @@ def get_subpages(start_url: str, max_pages: int):
         except Exception as ex:
             status_log[curr] = f"ERROR: {str(ex)[:60]}"
 
-    return html_collected, pdf_collected, skipped_urls, status_log
+    return html_collected, pdf_collected, skipped_urls, status_log, page_hashes
 
 
 def assemble_text(ort: str, html_pages: list, pdf_pages: list, limit: int):
