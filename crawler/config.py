@@ -39,7 +39,7 @@ CONFIG = {
 
     # Leer lassen [] für normale Crawl-Logik.
     # Beispiel: ["09162000", "05315000"]
-    "force_ags":               ["03453001"],
+    "force_ags":               [],
 
     "ziel_kategorien": {
         "Sanierung":     ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],

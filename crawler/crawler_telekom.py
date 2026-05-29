@@ -8,6 +8,8 @@ Fix: content_hash wird jetzt in crawl_targets gespeichert (nicht crawl_results),
      gefunden wurden oder sich der Text minimal aendert.
 """
 
+#todo Hashing verbessern bei dynamischen Websites
+
 import json
 import time
 from datetime import datetime
@@ -224,6 +226,8 @@ def run_crawler():
             # --- Gesamt-Hash-Vergleich (in crawl_targets) ---
             content_hash  = get_content_hash(text_bulk)
             stored_hash   = _load_stored_content_hash(cursor, ags)
+
+            log_event("🔑", f"NEU={content_hash[:8]} | ALT={str(stored_hash)[:8] if stored_hash else 'None'}")
 
             if stored_hash == content_hash and not is_forced:
                 log_event("🔒", f"Keine Änderungen in {ort} (Gesamt-Hash-Match).")
