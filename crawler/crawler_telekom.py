@@ -2,6 +2,10 @@
 crawler_telekom.py
 ==================
 Haupt-Loop des Telekom-Crawlers.
+
+Fix: content_hash wird jetzt in crawl_targets gespeichert (nicht crawl_results),
+     damit der Hash-Vergleich korrekt funktioniert – auch wenn 0 Massnahmen
+     gefunden wurden oder sich der Text minimal aendert.
 """
 
 import json
@@ -50,6 +54,23 @@ def _save_page_hashes(cursor, ags: str, page_hashes: dict):
     cursor.execute(
         "UPDATE crawl_targets SET subpage_hashes = %s WHERE ags = %s",
         (json.dumps(page_hashes, ensure_ascii=False), ags)
+    )
+
+
+def _load_stored_content_hash(cursor, ags: str) -> str | None:
+    """Liest den gespeicherten Gesamt-Hash des letzten Crawls aus crawl_targets."""
+    cursor.execute(
+        "SELECT content_hash FROM crawl_targets WHERE ags = %s", (ags,)
+    )
+    row = cursor.fetchone()
+    return row[0] if row and row[0] else None
+
+
+def _save_content_hash(cursor, ags: str, content_hash: str):
+    """Speichert den Gesamt-Hash des aktuellen Crawls in crawl_targets."""
+    cursor.execute(
+        "UPDATE crawl_targets SET content_hash = %s WHERE ags = %s",
+        (content_hash, ags)
     )
 
 
@@ -145,19 +166,23 @@ def run_crawler():
     start_zeit_dt     = datetime.now()
     prio_region       = CONFIG.get("prio_region")
     force_ags         = CONFIG.get("force_ags") or []
+
     write_history_log("START",
         f"Beginne Telekom-Crawler | Modell: {CONFIG['llm_model']} | "
         f"{CONFIG['llm_parallel_workers']} parallele LLM-Worker | "
         f"max. {CONFIG['max_targets']} Targets."
         + (f" Prio-Region: {prio_region}." if prio_region else "")
         + (f" Force-AGS: {force_ags}." if force_ags else ""))
+
     targets   = _fetch_targets(cursor)
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
+
     log_event("ℹ️", f"Modell: {CONFIG['llm_model']} | "
                    f"Chunk-Größe: {CONFIG['chunk_size']:,} | "
                    f"Overlap: {CONFIG['chunk_overlap']:,} Zeichen | "
                    f"Worker: {CONFIG['llm_parallel_workers']} | "
                    f"Targets: {len(targets)}")
+
     try:
         for ags, start_url, ort in targets:
             start_time   = datetime.now()
@@ -166,12 +191,15 @@ def run_crawler():
             log_event("🔍", f"Target: {ort} ({start_url}){forced_label}")
             update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
             targets_processed += 1
+
             html_pages, pdf_pages, skipped_urls, status_log, page_hashes = get_subpages(
                 start_url, CONFIG["max_subpages"]
             )
             write_skipped_urls(ort, skipped_urls)
             if skipped_urls:
                 log_event("🔗", f"{len(skipped_urls)} URL(s) per Dedup übersprungen")
+
+            # --- Unterseiten-Hash-Filter ---
             old_hashes = _load_stored_page_hashes(cursor, ags)
             if old_hashes and not is_forced:
                 html_pages, pdf_pages, unchanged_count = _filter_changed_pages(
@@ -180,9 +208,11 @@ def run_crawler():
                 if unchanged_count:
                     log_event("🔒", f"{unchanged_count} unveränderte Unterseite(n) übersprungen.")
             _save_page_hashes(cursor, ags, page_hashes)
+
             text_bulk, hat_gekuerzt, hat_verworfen = assemble_text(
                 ort, html_pages, pdf_pages, CONFIG["max_text_chars"]
             )
+
             if not text_bulk.strip():
                 fehler_codes = set(status_log.values())
                 fehler_info  = ", ".join(str(c) for c in sorted(fehler_codes, key=str))
@@ -190,23 +220,30 @@ def run_crawler():
                 update_live_log(ort, f"⚠️ Kein Text [{fehler_info}]")
                 conn.commit()
                 continue
-            content_hash = get_content_hash(text_bulk)
-            cursor.execute("SELECT id FROM crawl_results WHERE content_hash = %s", (content_hash,))
-            if cursor.fetchone() and not is_forced:
+
+            # --- Gesamt-Hash-Vergleich (jetzt in crawl_targets) ---
+            content_hash  = get_content_hash(text_bulk)
+            stored_hash   = _load_stored_content_hash(cursor, ags)
+
+            if stored_hash == content_hash and not is_forced:
                 log_event("🔒", f"Keine Änderungen in {ort} (Gesamt-Hash-Match).")
                 update_live_log(ort, "✅ Stand aktuell (Hash-Match)", gespart=True)
             else:
                 if is_forced:
                     log_event("📌", f"{ort}: FORCE → Analyse wird durchgeführt.")
+
                 log_event("🤖", f"Analyse {ort} → {CONFIG['llm_model']} ...")
                 update_live_log(ort, f"🤖 LLM-Analyse ({CONFIG['llm_model']})...")
+
                 found = analyze_with_telekom_llm(text_bulk, start_url)
+
                 valid_count  = 0
                 skipped_dups = 0
                 for item in found:
                     m_start = item.get("massnahme_start")
                     m_ende  = item.get("massnahme_ende")
                     m_name  = item.get("massnahme")
+
                     if not m_start and not m_ende:
                         continue
                     if m_ende:
@@ -215,33 +252,41 @@ def run_crawler():
                                 continue
                         except ValueError:
                             pass
+
                     if is_duplicate(cursor, ags, m_name, m_start):
                         skipped_dups += 1
                         log_event("🔄", f"DB-Duplikat übersprungen: {m_name}")
                         continue
+
                     valid_count += 1
                     cursor.execute("""
                         INSERT INTO crawl_results
                             (ags, gefunden_am, start_time, end_time, status, kategorie,
                              massnahme, adresse, massnahme_start, massnahme_ende,
-                             massnahme_url, content_hash)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             massnahme_url)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         ags, datetime.now().strftime("%Y-%m-%d"),
                         start_time, datetime.now(), "Erfolgreich",
                         item.get("kategorie"), m_name, item.get("adresse"),
-                        m_start, m_ende, item.get("quelle_url"), content_hash,
+                        m_start, m_ende, item.get("quelle_url"),
                     ))
+
+                # Hash immer nach Analyse speichern – auch bei 0 Funden
+                _save_content_hash(cursor, ags, content_hash)
+
                 total_funde += valid_count
                 log_event("✅", f"Fertig: {valid_count} neue Funde, "
                                f"{skipped_dups} Duplikate für {ort}.")
                 update_live_log(ort, f"✅ Fertig: {valid_count} Funde", funde=valid_count)
+
             cursor.execute(
                 "UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
                 (datetime.now(), ags)
             )
             conn.commit()
             time.sleep(CONFIG["sleep_between_targets"])
+
     finally:
         stop_heartbeat()
         heartbeat.join(timeout=2)
