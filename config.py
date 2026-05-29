@@ -43,19 +43,18 @@ CONFIG = {
     "force_ags":               [],
 
     "ziel_kategorien": {
-        "Sanierung":              ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
-        "Neubau":                 ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
-        "Privatisierung":         ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
-        "Straßen- und Brückenbau": [
+        "Sanierung":     ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
+        "Neubau":        ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
+        "Privatisierung": ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
+        "Straßenbau":    [
             "Straßenbau", "Straßensanierung", "Fahrbahnerneuerung",
+            "Kreisverkehr", "Gehweg", "Radweg", "Straßenausbau",
+        ],
+        "Brückenbau":    [
             "Brückenbau", "Brückensanierung", "Brückenneubau",
-            "Kreisverkehr", "Gehweg", "Radweg",
+            "Brückeninstandsetzung", "Unterführung",
         ],
-        "Tiefbau":                [
-            "Tiefbau", "Kanalbau", "Kanalsanierung", "Abwasser",
-            "Wasserleitung", "Leitungsbau", "Erdarbeiten",
-        ],
-        "Ausschreibung":          [
+        "Ausschreibung": [
             "Ausschreibung", "Vergabe", "Öffentliche Auftragsvergabe",
             "Submission", "VOB", "DTVP", "Bieterverfahren",
         ],
@@ -72,8 +71,8 @@ PDF_PRIO_KEYWORDS = [
     "bekanntmachung", "bebauungsplan", "b-plan", "bplan",
     "satzung", "erschließung", "erschliessung", "ausschreibung",
     "vergabe", "foerderung", "förderung", "sanierung",
-    "tiefbau", "strassenbau", "straßenbau", "brueckenbau", "brückenbau",
-    "kanalsanierung", "leitungsbau",
+    "strassenbau", "straßenbau", "brueckenbau", "brückenbau",
+    "brueckensanierung", "brückensanierung", "leitungsbau",
 ]
 
 CONSOLE_LOG_FILE = "crawler_console.log"
