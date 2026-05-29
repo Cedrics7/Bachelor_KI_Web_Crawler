@@ -11,7 +11,7 @@ import json
 import mimetypes
 import uvicorn
 
-from database import get_db_connection
+from crawler.database import get_db_connection
 
 mimetypes.add_type('application/javascript', '.js')
 mimetypes.add_type('text/css', '.css')
@@ -37,12 +37,10 @@ def get_stats(
     status: str = Query("Alle"),
     bundesland: str = Query("Alle")
 ):
-    """Gibt aggregierte KPIs zurück – optional gefiltert nach Status und Bundesland."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         first_day = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
         base_conds = []
         base_params = []
         if status == "Gecrawlt":
@@ -52,18 +50,14 @@ def get_stats(
         if bundesland != "Alle":
             base_conds.append("bundesland = %s")
             base_params.append(bundesland)
-
         where = ("WHERE " + " AND ".join(base_conds)) if base_conds else ""
-
         cursor.execute(f"SELECT COUNT(*) FROM crawl_targets {where}", base_params)
         total = cursor.fetchone()[0]
-
         done_conds = base_conds + ["last_scanned >= %s"]
         done_params = base_params + [first_day]
         done_where = "WHERE " + " AND ".join(done_conds)
         cursor.execute(f"SELECT COUNT(*) FROM crawl_targets {done_where}", done_params)
         done = cursor.fetchone()[0]
-
         conn.close()
         return {"total": total, "done": done, "pending": total - done}
     except Exception as e:
@@ -75,42 +69,34 @@ def get_bewegung_stats(
     bundesland: str = Query("Alle"),
     kategorie: str = Query("Alle")
 ):
-    """Gibt KPIs für Bewegungsdaten zurück – optional gefiltert."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         now = datetime.now()
         first_day_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
         base_conds = ["r.massnahme IS NOT NULL"]
         base_params = []
         join = "LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text"
-
         if bundesland != "Alle":
             base_conds.append("t.bundesland = %s")
             base_params.append(bundesland)
         if kategorie != "Alle":
             base_conds.append("r.kategorie = %s")
             base_params.append(kategorie)
-
         where = "WHERE " + " AND ".join(base_conds)
-
         cursor.execute(f"SELECT COUNT(*) FROM crawl_results r {join} {where}", base_params)
         total = cursor.fetchone()[0]
-
         cursor.execute(
             f"SELECT COUNT(*) FROM crawl_results r {join} {where} AND r.gefunden_am >= %s",
             base_params + [first_day_month]
         )
         month = cursor.fetchone()[0]
-
         cursor.execute(
             f"SELECT COUNT(*) FROM crawl_results r {join} {where} AND r.gefunden_am >= %s",
             base_params + [today_start]
         )
         today = cursor.fetchone()[0]
-
         conn.close()
         return {"total": total, "month": month, "today": today}
     except Exception as e:
@@ -126,14 +112,12 @@ def get_bewegungsdaten(
     kategorie: str = Query("Alle"),
     sort: str = Query("desc")
 ):
-    """Liest die gefundenen Maßnahmen aus."""
     try:
         conn = get_db_connection(as_dict=True)
         cur = conn.cursor()
         offset = (page - 1) * page_size
         where_conditions = ["r.massnahme IS NOT NULL"]
         params = []
-
         if search:
             where_conditions.append("(r.massnahme ILIKE %s OR r.adresse ILIKE %s OR t.ort ILIKE %s)")
             p = f"%{search}%"
@@ -144,10 +128,8 @@ def get_bewegungsdaten(
         if kategorie != "Alle":
             where_conditions.append("r.kategorie = %s")
             params.append(kategorie)
-
         where_clause = " WHERE " + " AND ".join(where_conditions)
         order_direction = "ASC" if sort.lower() == "asc" else "DESC"
-
         query = f"""
             SELECT r.id, r.massnahme, r.adresse, t.ort, r.massnahme_start, r.massnahme_ende,
                    r.massnahme_url, t.bundesland, r.kategorie, r.end_time, r.gefunden_am
@@ -159,7 +141,6 @@ def get_bewegungsdaten(
         """
         cur.execute(query, params + [page_size, offset])
         raw_items = cur.fetchall()
-
         items = []
         for row in raw_items:
             item = dict(row)
@@ -169,7 +150,6 @@ def get_bewegungsdaten(
                 elif isinstance(v, date):
                     item[k] = v.strftime('%Y-%m-%d')
             items.append(item)
-
         cur.execute(f"SELECT COUNT(*) as count FROM crawl_results r LEFT JOIN crawl_targets t ON r.ags::text = t.ags::text {where_clause}", params)
         total_count = cur.fetchone()['count']
         cur.execute("SELECT DISTINCT bundesland FROM crawl_targets WHERE bundesland IS NOT NULL ORDER BY bundesland")
@@ -177,7 +157,6 @@ def get_bewegungsdaten(
         cur.execute("SELECT DISTINCT kategorie FROM crawl_results WHERE kategorie IS NOT NULL ORDER BY kategorie")
         kat_list = [r['kategorie'] for r in cur.fetchall()]
         conn.close()
-
         return {
             "items": items,
             "total_count": total_count,
@@ -192,7 +171,6 @@ def get_bewegungsdaten(
 
 @app.get("/api/bestandsdaten/{item_id}")
 def get_bestandsdaten_by_id(item_id: int):
-    """Gibt einen einzelnen Bestandsdatensatz anhand seiner ID zurück."""
     try:
         conn = get_db_connection(as_dict=True)
         cur = conn.cursor()
@@ -224,14 +202,12 @@ def get_bestandsdaten(
         status: str = Query("Alle"),
         bundesland: str = Query("Alle")
 ):
-    """Liest die Bestandsdaten inkl. Pagination, Status- und Bundesland-Filter."""
     try:
         conn = get_db_connection(as_dict=True)
         cur = conn.cursor()
         offset = (page - 1) * page_size
         where_conditions = []
         params = []
-
         if search:
             where_conditions.append("(ort ILIKE %s OR ags ILIKE %s)")
             params.extend([f"%{search}%", f"%{search}%"])
@@ -242,18 +218,15 @@ def get_bestandsdaten(
         if bundesland != "Alle":
             where_conditions.append("bundesland = %s")
             params.append(bundesland)
-
         where_clause = ""
         if where_conditions:
             where_clause = "WHERE " + " AND ".join(where_conditions)
-
         cur.execute(f"""
             SELECT id, ort, ags, bundesland, last_scanned, url
             FROM crawl_targets
             {where_clause} ORDER BY id ASC LIMIT %s OFFSET %s
         """, params + [page_size, offset])
         raw_items = cur.fetchall()
-
         items = []
         for row in raw_items:
             item = dict(row)
@@ -262,15 +235,11 @@ def get_bestandsdaten(
             else:
                 item['last_scanned'] = '-'
             items.append(item)
-
         cur.execute(f"SELECT COUNT(*) as count FROM crawl_targets {where_clause}", params)
         total_count = cur.fetchone()['count']
-
         cur.execute("SELECT DISTINCT bundesland FROM crawl_targets WHERE bundesland IS NOT NULL ORDER BY bundesland")
         bl_list = [r['bundesland'] for r in cur.fetchall()]
-
         conn.close()
-
         return {
             "items": items,
             "total_count": total_count,
@@ -286,18 +255,15 @@ def get_bestandsdaten(
 
 @app.get("/api/monitoring")
 def get_monitoring():
-    """Liefert die Live-Logs und den aktuellen Crawler-Status."""
     try:
         live_data = {"aktueller_ort": "Unbekannt", "status": "Inaktiv", "letzte_funde": 0, "timestamp": "-"}
         if os.path.exists("crawler_live_status.json"):
             with open("crawler_live_status.json", "r", encoding="utf-8") as f:
                 live_data = json.load(f)
-
         history_log = ""
         if os.path.exists("crawler_history.txt"):
             with open("crawler_history.txt", "r", encoding="utf-8") as f:
                 history_log = "".join(f.readlines()[-20:][::-1])
-
         return {"live": live_data, "history": history_log}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
