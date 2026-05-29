@@ -64,7 +64,11 @@ INSERT INTO changelog (version, release_date, title, description, commit_sha) VA
 
 ('1.6.0', '2026-05-12', 'Config-Zentralisierung & UI-Fixes',
     'Filter-Parameter (min_pdf_year, min_end_datum) zentral in CONFIG, KPI-Karten Bewegungsdaten (Gesamt/Monat/Heute), Bestandsdaten: gefunden_am nutzt end_time-Zeitstempel, Bundesland-Filter optisch angeglichen, Monitoring-Übersicht entfernt, Auto-Refresh alle Panels',
-    'c296addbc53a594c1fe8e15de5789ceaa6895fe8');
+    'c296addbc53a594c1fe8e15de5789ceaa6895fe8'),
+
+('1.7.0', '2026-05-29', 'Unterseiten-Hashing & Kontext-Chunking',
+    'SHA-256-Hashing aller gecrawlten Unterseiten/PDFs für differenzielle Crawl-Läufe (nur geänderte Seiten ans LLM), kontextbewusstes Chunking mit konfigurierbarem Overlap (chunk_overlap in CONFIG), neue DB-Spalte subpage_hashes in crawl_targets',
+    '4811423');
 
 
 -- ============================================================
@@ -181,10 +185,22 @@ SELECT id, 'fix',      'ui',      'Auto-Refresh jetzt für alle Panels inkl. Ort
 INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
 SELECT id, 'feat',     'db',      'Index idx_crawl_results_end_time hinzugefügt (Performance)',                                  'c296addb', 8 FROM changelog WHERE version = '1.6.0';
 
+-- v1.7.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler', 'SHA-256-Hashing aller Unterseiten und PDFs nach jedem Crawl-Lauf',                               '4811423', 1 FROM changelog WHERE version = '1.7.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'perf', 'crawler', 'Differenzieller Crawl: nur geänderte/neue Unterseiten werden ans LLM übergeben',                 '4811423', 2 FROM changelog WHERE version = '1.7.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler', 'Kontext-Chunking: chunk_overlap (Standard 5.000 Zeichen) aus vorherigem Chunk als LLM-Kontext', '4811423', 3 FROM changelog WHERE version = '1.7.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'db',      'Neue Spalte subpage_hashes JSONB in crawl_targets (Migration: add_subpage_hashes.sql)',          '4811423', 4 FROM changelog WHERE version = '1.7.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'config',  'Neuer CONFIG-Parameter chunk_overlap für einstellbaren Kontext-Überlapp',                        '4811423', 5 FROM changelog WHERE version = '1.7.0';
+
 
 -- ============================================================
 -- FERTIG
 -- Nur changelog + changelog_items befüllt.
 -- crawl_targets und crawl_results wurden NICHT angefasst.
--- Versionen: 12 (0.1.0 – 1.6.0) | Items: 38
+-- Versionen: 13 (0.1.0 – 1.7.0) | Items: 43
 -- ============================================================
