@@ -41,6 +41,84 @@ def is_duplicate(cursor, ags: str, massnahme: str, massnahme_start) -> bool:
     return cursor.fetchone() is not None
 
 
+def _fetch_targets(cursor) -> list:
+    """
+    Lädt Crawl-Targets aus der DB.
+
+    Logik:
+      - force_ags (aus CONFIG): Diese AGS-IDs werden IMMER geladen,
+        unabhängig von last_scanned. Sie kommen an den Anfang der Liste.
+      - Normale Targets: sortiert nach last_scanned ASC NULLS FIRST,
+        begrenzt auf max_targets.
+      - Wenn force_ags leer ist: nur normale Logik.
+    """
+    force_ags   = CONFIG.get("force_ags") or []
+    max_targets = CONFIG["max_targets"]
+    prio_region = CONFIG.get("prio_region", "")
+
+    forced_rows  = []
+    normal_rows  = []
+
+    # --- 1. force_ags laden (last_scanned wird ignoriert) ---
+    if force_ags:
+        placeholders = ",".join(["%s"] * len(force_ags))
+        cursor.execute(
+            f"SELECT ags, url, ort FROM crawl_targets WHERE ags IN ({placeholders})",
+            tuple(force_ags)
+        )
+        forced_rows = cursor.fetchall()
+        if forced_rows:
+            log_event("📌", f"force_ags: {len(forced_rows)} Target(s) erzwungen: "
+                           f"{[r[2] for r in forced_rows]}")
+
+    # --- 2. Normale Targets (ohne die force_ags, damit keine Dopplung) ---
+    exclude_ags = list(force_ags) if force_ags else []
+
+    if prio_region:
+        if exclude_ags:
+            placeholders = ",".join(["%s"] * len(exclude_ags))
+            cursor.execute(f"""
+                SELECT ct.ags, ct.url, ct.ort
+                FROM crawl_targets ct
+                LEFT JOIN region_mapping rm ON ct.bundesland = rm.bundesland
+                WHERE ct.ags NOT IN ({placeholders})
+                ORDER BY
+                    CASE WHEN rm.region = %s THEN 0 ELSE 1 END ASC,
+                    ct.last_scanned ASC NULLS FIRST
+                LIMIT %s
+            """, (*exclude_ags, prio_region, max_targets))
+        else:
+            cursor.execute("""
+                SELECT ct.ags, ct.url, ct.ort
+                FROM crawl_targets ct
+                LEFT JOIN region_mapping rm ON ct.bundesland = rm.bundesland
+                ORDER BY
+                    CASE WHEN rm.region = %s THEN 0 ELSE 1 END ASC,
+                    ct.last_scanned ASC NULLS FIRST
+                LIMIT %s
+            """, (prio_region, max_targets))
+        log_event("🎯", f"Region-Priorisierung aktiv: '{prio_region}'")
+    else:
+        if exclude_ags:
+            placeholders = ",".join(["%s"] * len(exclude_ags))
+            cursor.execute(
+                f"SELECT ags, url, ort FROM crawl_targets "
+                f"WHERE ags NOT IN ({placeholders}) "
+                f"ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
+                (*exclude_ags, max_targets)
+            )
+        else:
+            cursor.execute(
+                "SELECT ags, url, ort FROM crawl_targets "
+                "ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
+                (max_targets,)
+            )
+    normal_rows = cursor.fetchall()
+
+    # force_ags zuerst, dann normale Targets
+    return forced_rows + normal_rows
+
+
 def run_crawler():
     _reset_log_if_new_month(CONSOLE_LOG_FILE)
     _reset_log_if_new_month(SKIPPED_LOG_FILE)
@@ -55,42 +133,30 @@ def run_crawler():
     total_funde       = 0
     start_zeit_dt     = datetime.now()
     prio_region       = CONFIG.get("prio_region")
+    force_ags         = CONFIG.get("force_ags") or []
 
     write_history_log("START",
         f"Beginne Telekom-Crawler | Modell: {CONFIG['llm_model']} | "
         f"{CONFIG['llm_parallel_workers']} parallele LLM-Worker | "
         f"max. {CONFIG['max_targets']} Targets."
-        + (f" Prio-Region: {prio_region}." if prio_region else ""))
+        + (f" Prio-Region: {prio_region}." if prio_region else "")
+        + (f" Force-AGS: {force_ags}." if force_ags else ""))
 
-    if prio_region:
-        cursor.execute("""
-            SELECT ct.ags, ct.url, ct.ort
-            FROM crawl_targets ct
-            LEFT JOIN region_mapping rm ON ct.bundesland = rm.bundesland
-            ORDER BY
-                CASE WHEN rm.region = %s THEN 0 ELSE 1 END ASC,
-                ct.last_scanned ASC NULLS FIRST
-            LIMIT %s
-        """, (prio_region, CONFIG["max_targets"]))
-        log_event("🎯", f"Region-Priorisierung aktiv: '{prio_region}'")
-    else:
-        cursor.execute(
-            "SELECT ags, url, ort FROM crawl_targets ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
-            (CONFIG["max_targets"],)
-        )
-
-    targets   = cursor.fetchall()
+    targets   = _fetch_targets(cursor)
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
 
     log_event("ℹ️", f"Modell: {CONFIG['llm_model']} | "
                    f"Chunk-Größe: {CONFIG['chunk_size']:,} Zeichen | "
                    f"Kontext-Fenster: {CONFIG['context_window_size']} Einträge | "
-                   f"Parallel-Worker: {CONFIG['llm_parallel_workers']}")
+                   f"Parallel-Worker: {CONFIG['llm_parallel_workers']} | "
+                   f"Targets geladen: {len(targets)}")
 
     try:
         for ags, start_url, ort in targets:
-            start_time = datetime.now()
-            log_event("🔍", f"Target: {ort} ({start_url})")
+            start_time   = datetime.now()
+            is_forced    = ags in force_ags
+            forced_label = " [FORCE]" if is_forced else ""
+            log_event("🔍", f"Target: {ort} ({start_url}){forced_label}")
             update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
             targets_processed += 1
 
@@ -115,10 +181,14 @@ def run_crawler():
             content_hash = get_content_hash(text_bulk)
             cursor.execute("SELECT id FROM crawl_results WHERE content_hash = %s", (content_hash,))
 
-            if cursor.fetchone():
+            if cursor.fetchone() and not is_forced:
+                # Hash-Match: Inhalt unverändert UND kein Force → überspringen
                 log_event("🔒", f"Keine Änderungen in {ort} (Hash-Match).")
                 update_live_log(ort, "✅ Stand aktuell (Hash-Match)", gespart=True)
             else:
+                if is_forced and cursor.fetchone():
+                    log_event("📌", f"{ort}: Hash-Match, aber FORCE → Analyse wird trotzdem durchgeführt.")
+
                 log_event("🤖", f"Analyse {ort} → {CONFIG['llm_model']} ...")
                 update_live_log(ort, f"🤖 LLM-Analyse ({CONFIG['llm_model']})...")
 

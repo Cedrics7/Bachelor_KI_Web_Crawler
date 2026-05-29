@@ -32,13 +32,32 @@ CONFIG = {
     "tpm_limit":               1_000_000,
     "rpd_limit":               500,
     "prio_region":             "",
+
+    # -------------------------------------------------------------------
+    # force_ags: Liste von AGS-IDs die IMMER gecrawlt werden,
+    # unabhängig vom letzten Scan-Zeitpunkt (last_scanned wird ignoriert).
+    # Leer lassen [] für normale Crawl-Logik.
+    # Beispiel: ["09162000", "05315000"]
+    # -------------------------------------------------------------------
+    "force_ags":               [],
+
     "ziel_kategorien": {
-        "Sanierung":       ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
-        "Neubau":          ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
-        "Privatisierung":  ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
-        "Tiefbau":         ["Tiefbau", "Straßenbau", "Kanalsanierung", "Brückenbau"],
-        "Ausschreibung":   ["Ausschreibung", "Vergabe", "Öffentliche Auftragsvergabe",
-                            "Submission", "VOB", "DTVP"],
+        "Sanierung":              ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
+        "Neubau":                 ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
+        "Privatisierung":         ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
+        "Straßen- und Brückenbau": [
+            "Straßenbau", "Straßensanierung", "Fahrbahnerneuerung",
+            "Brückenbau", "Brückensanierung", "Brückenneubau",
+            "Kreisverkehr", "Gehweg", "Radweg",
+        ],
+        "Tiefbau":                [
+            "Tiefbau", "Kanalbau", "Kanalsanierung", "Abwasser",
+            "Wasserleitung", "Leitungsbau", "Erdarbeiten",
+        ],
+        "Ausschreibung":          [
+            "Ausschreibung", "Vergabe", "Öffentliche Auftragsvergabe",
+            "Submission", "VOB", "DTVP", "Bieterverfahren",
+        ],
     },
 }
 
@@ -51,7 +70,9 @@ IGNORIERE_PARAMS = {
 PDF_PRIO_KEYWORDS = [
     "bekanntmachung", "bebauungsplan", "b-plan", "bplan",
     "satzung", "erschließung", "erschliessung", "ausschreibung",
-    "vergabe", "foerderung", "förderung", "sanierung", "tiefbau",
+    "vergabe", "foerderung", "förderung", "sanierung",
+    "tiefbau", "strassenbau", "straßenbau", "brueckenbau", "brückenbau",
+    "kanalsanierung", "leitungsbau",
 ]
 
 CONSOLE_LOG_FILE = "crawler_console.log"
