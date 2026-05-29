@@ -6,6 +6,13 @@
 
 const PAGES = ['bestandsdaten', 'bewegungsdaten', 'monitoring', 'changelog'];
 
+// Filter-Parameter die je Seite exklusiv sind und beim
+// Seitenwechsel zurückgesetzt werden müssen.
+const PAGE_FILTERS = {
+    bestandsdaten:  ['status', 'bl', 'search', 'p'],
+    bewegungsdaten: ['bl', 'kat', 'sort', 'search', 'p'],
+};
+
 let _monitoringInterval = null;
 let _kpiInterval        = null;
 
@@ -61,16 +68,24 @@ function getState() {
     };
 }
 
+const FILTER_DEFAULTS = { sort: 'desc', p: 1, status: 'Alle', bl: 'Alle', kat: 'Alle', idtype: 'bestand', search: '' };
+
 function updateUrl(page, overrides = {}) {
     const current = getState();
-    const next    = { ...current, ...overrides };
+    let next      = { ...current, ...overrides };
     if (page && PAGES.includes(page)) next.page = page;
-    if (next.page !== current.page)   next.p    = 1;
+
+    // Beim Seitenwechsel: Filter der alten Seite zurücksetzen
+    if (next.page !== current.page) {
+        const toClear = PAGE_FILTERS[current.page] ?? [];
+        toClear.forEach((k) => { next[k] = FILTER_DEFAULTS[k]; });
+        next.p = 1;
+    }
 
     const params = new URLSearchParams();
-    const skip   = { sort: 'desc', p: 1, status: 'Alle', bl: 'Alle', kat: 'Alle', idtype: 'bestand' };
     Object.entries(next).forEach(([k, v]) => {
-        if (v !== null && v !== '' && !(k in skip && String(v) === String(skip[k])))
+        const def = FILTER_DEFAULTS[k];
+        if (v !== null && v !== '' && !(def !== undefined && String(v) === String(def)))
             params.set(k, v);
     });
 
