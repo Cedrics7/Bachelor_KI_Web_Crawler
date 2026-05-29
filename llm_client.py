@@ -51,6 +51,12 @@ def log_cost_event(ort: str, chunk_idx: int, cost: float):
         pass
 
 
+def get_session_stats() -> tuple:
+    """Gibt (_session_cost, _session_requests) zurück – für Summary in run_crawler."""
+    with _cost_lock:
+        return _session_cost, _session_requests
+
+
 # ---------------------------------------------------------------
 # Rolling Context Window
 # ---------------------------------------------------------------
@@ -109,13 +115,15 @@ def sanitize_date(val) -> str | None:
 
 
 # ---------------------------------------------------------------
-# Prompt-Builder
+# Prompt-Builder  (inkl. ZEITRAUM-FILTER wie im Original)
 # ---------------------------------------------------------------
 def _build_prompt(chunk_text: str, start_url: str, context_window: ContextWindow,
                   chunk_idx: int) -> str:
     base_url          = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
     kategorien_string = json.dumps(CONFIG["ziel_kategorien"], ensure_ascii=False, indent=2)
     ctx_hint          = context_window.get_context_text()
+    today_str         = date.today().strftime("%Y-%m-%d")
+    cutoff_str        = date.today().replace(year=date.today().year - 3).strftime("%Y-%m-%d")
 
     return f"""Du bist ein Experte für die Analyse kommunaler Ausschreibungen und Bauprojekte.
 
@@ -129,6 +137,12 @@ STRIKTE AUSSCHLUSSKRITERIEN - ignoriere komplett:
 {ctx_hint}
 KATEGORIEN:
 {kategorien_string}
+
+ZEITRAUM-FILTER (Stichtag heute: {today_str}):
+- Erfasse NUR Maßnahmen die NOCH LAUFEN oder IN DER ZUKUNFT liegen.
+- "massnahme_ende" vorhanden UND liegt VOR {today_str} → Maßnahme WEGLASSEN (abgeschlossen).
+- Nur Startdatum vorhanden, älter als 3 Jahre (vor {cutoff_str}) → WEGLASSEN.
+- Laufende Maßnahmen ohne Enddatum (null) → IMMER erfassen, egal wie alt der Start ist.
 
 WICHTIG:
         - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
@@ -276,62 +290,6 @@ def _parse_massnahmen(raw: str, start_url: str) -> list:
 
 
 # ---------------------------------------------------------------
-# LLM-Call
-# ---------------------------------------------------------------
-def _call_telekom_llm(prompt: str, est_tokens: int, chunk_idx: int, ort: str):
-    """Einzelner LLM-Call an die Telekom API. Gibt (raw_text, cost) zurück."""
-    headers = {
-        "Authorization": f"Bearer {TELEKOM_API_KEY}",
-        "Content-Type":  "application/json",
-    }
-    payload = {
-        "model":       CONFIG["llm_model"],
-        "messages":    [{"role": "user", "content": prompt}],
-        "max_tokens":  8192,
-        "temperature": 0.0,
-    }
-    retries = CONFIG["llm_retries"]
-    delays  = CONFIG["llm_retry_delays"]
-
-    for versuch in range(retries + 1):
-        try:
-            resp = requests.post(
-                f"{CONFIG['llm_base_url']}/chat/completions",
-                headers=headers, json=payload, timeout=300,
-            )
-            cost = record_cost(dict(resp.headers))
-            log_cost_event(ort, chunk_idx, cost)
-
-            if resp.status_code == 429:
-                wait = int(resp.headers.get("Retry-After", delays[min(versuch, len(delays)-1)]))
-                log_event("⏳", f"429 Too Many Requests – warte {wait}s ...")
-                time.sleep(wait)
-                continue
-
-            resp.raise_for_status()
-            api_guard.update_usage(est_tokens)
-            content = resp.json()["choices"][0]["message"]["content"]
-            return content, cost
-
-        except requests.exceptions.HTTPError as e:
-            if versuch < retries:
-                wait = delays[min(versuch, len(delays)-1)]
-                log_event("⚠️", f"HTTP-Fehler {e} (Chunk {chunk_idx}) – warte {wait}s ...")
-                time.sleep(wait)
-            else:
-                log_event("❌", f"LLM nach {retries} Versuchen fehlgeschlagen (Chunk {chunk_idx})")
-        except Exception as e:
-            if versuch < retries:
-                wait = delays[min(versuch, len(delays)-1)]
-                log_event("⚠️", f"Fehler: {str(e)[:60]} – warte {wait}s ...")
-                time.sleep(wait)
-            else:
-                log_event("❌", f"Unbekannter Fehler Chunk {chunk_idx}: {e}")
-
-    return None, 0.0
-
-
-# ---------------------------------------------------------------
 # Deduplizierung & parallele Analyse
 # ---------------------------------------------------------------
 def deduplicate_massnahmen(massnahmen: list) -> list:
@@ -416,3 +374,59 @@ def analyze_with_telekom_llm(gesammelter_text: str, start_url: str) -> list:
     log_event("🔗", f"Gesamt: {len(alle_massnahmen)} Roh-Funde → {len(unique)} nach Dedup | "
                    f"Session-Kosten bisher: {_session_cost:.6f} $")
     return unique
+
+
+# ---------------------------------------------------------------
+# LLM-Call
+# ---------------------------------------------------------------
+def _call_telekom_llm(prompt: str, est_tokens: int, chunk_idx: int, ort: str):
+    """Einzelner LLM-Call an die Telekom API. Gibt (raw_text, cost) zurück."""
+    headers = {
+        "Authorization": f"Bearer {TELEKOM_API_KEY}",
+        "Content-Type":  "application/json",
+    }
+    payload = {
+        "model":       CONFIG["llm_model"],
+        "messages":    [{"role": "user", "content": prompt}],
+        "max_tokens":  8192,
+        "temperature": 0.0,
+    }
+    retries = CONFIG["llm_retries"]
+    delays  = CONFIG["llm_retry_delays"]
+
+    for versuch in range(retries + 1):
+        try:
+            resp = requests.post(
+                f"{CONFIG['llm_base_url']}/chat/completions",
+                headers=headers, json=payload, timeout=300,
+            )
+            cost = record_cost(dict(resp.headers))
+            log_cost_event(ort, chunk_idx, cost)
+
+            if resp.status_code == 429:
+                wait = int(resp.headers.get("Retry-After", delays[min(versuch, len(delays)-1)]))
+                log_event("⏳", f"429 Too Many Requests – warte {wait}s ...")
+                time.sleep(wait)
+                continue
+
+            resp.raise_for_status()
+            api_guard.update_usage(est_tokens)
+            content = resp.json()["choices"][0]["message"]["content"]
+            return content, cost
+
+        except requests.exceptions.HTTPError as e:
+            if versuch < retries:
+                wait = delays[min(versuch, len(delays)-1)]
+                log_event("⚠️", f"HTTP-Fehler {e} (Chunk {chunk_idx}) – warte {wait}s ...")
+                time.sleep(wait)
+            else:
+                log_event("❌", f"LLM nach {retries} Versuchen fehlgeschlagen (Chunk {chunk_idx})")
+        except Exception as e:
+            if versuch < retries:
+                wait = delays[min(versuch, len(delays)-1)]
+                log_event("⚠️", f"Fehler: {str(e)[:60]} – warte {wait}s ...")
+                time.sleep(wait)
+            else:
+                log_event("❌", f"Unbekannter Fehler Chunk {chunk_idx}: {e}")
+
+    return None, 0.0

@@ -23,7 +23,7 @@ from logger import (
     _reset_log_if_new_month, start_heartbeat, stop_heartbeat,
 )
 from scraper import get_subpages, assemble_text, get_content_hash
-from llm_client import analyze_with_telekom_llm
+from llm_client import analyze_with_telekom_llm, get_session_stats
 from database import get_db_connection
 
 
@@ -174,11 +174,13 @@ def run_crawler():
     finally:
         stop_heartbeat()
         heartbeat.join(timeout=2)
+        gesamtkosten, gesamtrequests = get_session_stats()
         laufzeit = (datetime.now() - start_zeit_dt).total_seconds()
         write_history_log("ENDE",
             f"Telekom-Crawler abgeschlossen. "
             f"Targets: {targets_processed} | Funde: {total_funde} | "
-            f"Laufzeit: {laufzeit:.1f}s")
+            f"Laufzeit: {laufzeit:.1f}s | "
+            f"Gesamtkosten: {gesamtkosten:.6f} $ ({gesamtrequests} Requests)")
         try:
             conn.close()
         except Exception:

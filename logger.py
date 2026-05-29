@@ -2,6 +2,11 @@
 logger.py
 =========
 Logging-Hilfsfunktionen: Konsole, History, Live-Status, Heartbeat.
+
+Hinweis zu update_live_log:
+  Keys im JSON entsprechen dem Original:
+    'aktueller_ort'  (nicht 'letzter_ort')
+    'hash_match'     (nicht 'gespart')
 """
 
 import os
@@ -75,7 +80,7 @@ def write_history_log(event_type: str, message: str):
             lines = f.readlines()
         if len(lines) > CONFIG["max_log_lines"]:
             with open(log_file, "w", encoding="utf-8") as f:
-                f.writelines(lines[-CONFIG["max_log_lines"]:])    
+                f.writelines(lines[-CONFIG["max_log_lines"]:])
     except FileNotFoundError:
         pass
 
@@ -99,6 +104,10 @@ def reset_live_log_if_new_day():
 
 
 def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False):
+    """
+    Schreibt den aktuellen Crawl-Status in crawler_live_status.json.
+    Keys identisch zum Original: 'aktueller_ort', 'hash_match'.
+    """
     status_file        = "crawler_live_status.json"
     heute_str          = datetime.now().strftime("%Y-%m-%d")
     gesamt_funde_heute = funde
@@ -112,11 +121,11 @@ def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False
             pass
     with open(status_file, "w", encoding="utf-8") as f:
         json.dump({
-            "timestamp":    datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            "letzter_ort":  ort,
-            "status":       status,
-            "letzte_funde": gesamt_funde_heute,
-            "gespart":      gespart,
+            "timestamp":     datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "aktueller_ort": ort,
+            "status":        status,
+            "letzte_funde":  gesamt_funde_heute,
+            "hash_match":    gespart,
         }, f, ensure_ascii=False, indent=4)
 
 
