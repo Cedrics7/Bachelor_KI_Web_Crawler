@@ -10,6 +10,8 @@ Neu (v1.8):  Regex-Scan für PDF-Links im Rohtext (JS-gerenderte Seiten).
 Neu (v1.9):  requests durch httpx ersetzt – echter DNS-Timeout verhindert
              Prozess-Kills bei nicht auflösbaren Domains.
 Neu (v1.10): max_redirects=5 verhindert Redirect-Loops bei defekten Domains.
+Neu (v1.11): httpx.Client statt httpx.get() – max_redirects wird erst vom
+             Client-Objekt unterstützt, nicht von der Top-Level-Funktion.
 """
 
 import re
@@ -28,7 +30,7 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 # Regex für absolute PDF-URLs im Rohtext (JS-gerenderte Links, data-Attribute, etc.)
 _PDF_URL_RE = re.compile(r'https?://[^\s"\' <>]+\.pdf', re.IGNORECASE)
 
-# Maximale Anzahl an Redirects pro Request
+# Maximale Anzahl an Redirects pro Request (nur via httpx.Client unterstützt)
 _MAX_REDIRECTS = 5
 
 
@@ -71,9 +73,8 @@ def get_url_base(url: str) -> str:
 
 def extract_pdf_text(url: str, max_pages: int) -> str:
     try:
-        response = httpx.get(url, timeout=10,
-                             follow_redirects=True,
-                             max_redirects=_MAX_REDIRECTS)
+        with httpx.Client(follow_redirects=True, max_redirects=_MAX_REDIRECTS) as client:
+            response = client.get(url, timeout=10)
         with fitz.open(stream=response.content, filetype="pdf") as doc:
             meta   = doc.metadata
             c_date = meta.get("creationDate", "")
@@ -109,90 +110,91 @@ def get_subpages(start_url: str, max_pages: int):
     base_domain    = urlparse(start_url).netloc
     prio_keywords  = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
 
-    while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
-        curr      = to_visit.pop(0)
-        curr_base = get_url_base(curr)
-        if curr_base in visited_base:
-            skipped_urls.append(curr)
-            continue
-        visited_base.add(curr_base)
-        visited_full.add(curr)
-        try:
-            resp = httpx.get(curr,
-                             timeout=CONFIG["timeout_seconds"],
-                             headers={"User-Agent": "BachelorCrawler/1.0"},
-                             follow_redirects=True,
-                             max_redirects=_MAX_REDIRECTS)
-            status_log[curr] = resp.status_code
-            if str(resp.url) != curr:
-                final_base = get_url_base(str(resp.url))
-                if final_base in visited_base and final_base != curr_base:
-                    skipped_urls.append(curr)
-                    visited_base.discard(curr_base)
-                    continue
-                visited_base.add(final_base)
-                visited_full.add(str(resp.url))
+    with httpx.Client(
+        follow_redirects=True,
+        max_redirects=_MAX_REDIRECTS,
+        headers={"User-Agent": "BachelorCrawler/1.0"}
+    ) as client:
+        while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
+            curr      = to_visit.pop(0)
+            curr_base = get_url_base(curr)
+            if curr_base in visited_base:
+                skipped_urls.append(curr)
+                continue
+            visited_base.add(curr_base)
+            visited_full.add(curr)
+            try:
+                resp = client.get(curr, timeout=CONFIG["timeout_seconds"])
+                status_log[curr] = resp.status_code
+                if str(resp.url) != curr:
+                    final_base = get_url_base(str(resp.url))
+                    if final_base in visited_base and final_base != curr_base:
+                        skipped_urls.append(curr)
+                        visited_base.discard(curr_base)
+                        continue
+                    visited_base.add(final_base)
+                    visited_full.add(str(resp.url))
 
-            if resp.status_code == 200:
-                raw_hash = hashlib.sha256(resp.content).hexdigest()
-                page_hashes[curr_base] = raw_hash
+                if resp.status_code == 200:
+                    raw_hash = hashlib.sha256(resp.content).hexdigest()
+                    page_hashes[curr_base] = raw_hash
 
-                if curr.lower().endswith(".pdf"):
-                    text = extract_pdf_text(curr, CONFIG["max_pdf_pages"])
-                    if text:
-                        pdf_collected.append((curr, text))
-                else:
-                    html_collected.append((curr, extract_main_text(resp.text)))
-                    soup = BeautifulSoup(resp.text, "html.parser")
+                    if curr.lower().endswith(".pdf"):
+                        text = extract_pdf_text(curr, CONFIG["max_pdf_pages"])
+                        if text:
+                            pdf_collected.append((curr, text))
+                    else:
+                        html_collected.append((curr, extract_main_text(resp.text)))
+                        soup = BeautifulSoup(resp.text, "html.parser")
 
-                    # --- BeautifulSoup: normale <a href> Links ---
-                    bs_links = set()
-                    for link in soup.find_all("a", href=True):
-                        nxt = urljoin(start_url, link["href"])
-                        bs_links.add(nxt)
+                        # --- BeautifulSoup: normale <a href> Links ---
+                        bs_links = set()
+                        for link in soup.find_all("a", href=True):
+                            nxt = urljoin(start_url, link["href"])
+                            bs_links.add(nxt)
 
-                    # --- Regex: PDF-URLs im Rohtext (JS-gerendert, data-Attribute, etc.) ---
-                    # Erfasst Links die nicht als <a href> im statischen HTML stehen,
-                    # z.B. window.open('...pdf'), data-href="...pdf" oder JSON-Payloads.
-                    regex_pdf_links = set()
-                    for raw_url in _PDF_URL_RE.findall(resp.text):
-                        # Nur Links der gleichen Domain übernehmen
-                        if urlparse(raw_url).netloc == base_domain:
-                            regex_pdf_links.add(raw_url)
+                        # --- Regex: PDF-URLs im Rohtext (JS-gerendert, data-Attribute, etc.) ---
+                        # Erfasst Links die nicht als <a href> im statischen HTML stehen,
+                        # z.B. window.open('...pdf'), data-href="...pdf" oder JSON-Payloads.
+                        regex_pdf_links = set()
+                        for raw_url in _PDF_URL_RE.findall(resp.text):
+                            # Nur Links der gleichen Domain übernehmen
+                            if urlparse(raw_url).netloc == base_domain:
+                                regex_pdf_links.add(raw_url)
 
-                    # Neue PDF-Links durch Regex? Kurze Info ins Log.
-                    neu_via_regex = regex_pdf_links - bs_links
-                    if neu_via_regex:
-                        log_event("🔎", f"Regex-Scan fand {len(neu_via_regex)} zus. PDF(s) "
-                                           f"auf {curr[:60]}: "
-                                           + ", ".join(u.split('/')[-1] for u in neu_via_regex))
+                        # Neue PDF-Links durch Regex? Kurze Info ins Log.
+                        neu_via_regex = regex_pdf_links - bs_links
+                        if neu_via_regex:
+                            log_event("🔎", f"Regex-Scan fand {len(neu_via_regex)} zus. PDF(s) "
+                                               f"auf {curr[:60]}: "
+                                               + ", ".join(u.split('/')[-1] for u in neu_via_regex))
 
-                    alle_links = bs_links | regex_pdf_links
+                        alle_links = bs_links | regex_pdf_links
 
-                    for nxt in alle_links:
-                        nxt_base = get_url_base(nxt)
-                        if (urlparse(nxt).netloc == base_domain
-                                and is_relevant_url(nxt)
-                                and nxt_base not in visited_base
-                                and nxt not in visited_full):
-                            visited_full.add(nxt)
-                            # PDFs (inkl. via Regex gefundene) immer priorisieren
-                            if nxt.lower().endswith(".pdf") or any(
-                                    p in nxt.lower() for p in prio_keywords):
-                                to_visit.insert(0, nxt)
-                            else:
-                                to_visit.append(nxt)
+                        for nxt in alle_links:
+                            nxt_base = get_url_base(nxt)
+                            if (urlparse(nxt).netloc == base_domain
+                                    and is_relevant_url(nxt)
+                                    and nxt_base not in visited_base
+                                    and nxt not in visited_full):
+                                visited_full.add(nxt)
+                                # PDFs (inkl. via Regex gefundene) immer priorisieren
+                                if nxt.lower().endswith(".pdf") or any(
+                                        p in nxt.lower() for p in prio_keywords):
+                                    to_visit.insert(0, nxt)
+                                else:
+                                    to_visit.append(nxt)
 
-        except PermissionError as e:
-            status_log[curr] = f"PERMISSION_ERROR: {str(e)[:60]}"
-        except httpx.TooManyRedirects:
-            status_log[curr] = "TOO_MANY_REDIRECTS"
-        except httpx.TimeoutException:
-            status_log[curr] = "TIMEOUT"
-        except httpx.ConnectError:
-            status_log[curr] = "CONNECTION_ERROR"
-        except Exception as ex:
-            status_log[curr] = f"ERROR: {str(ex)[:60]}"
+            except PermissionError as e:
+                status_log[curr] = f"PERMISSION_ERROR: {str(e)[:60]}"
+            except httpx.TooManyRedirects:
+                status_log[curr] = "TOO_MANY_REDIRECTS"
+            except httpx.TimeoutException:
+                status_log[curr] = "TIMEOUT"
+            except httpx.ConnectError:
+                status_log[curr] = "CONNECTION_ERROR"
+            except Exception as ex:
+                status_log[curr] = f"ERROR: {str(ex)[:60]}"
 
     return html_collected, pdf_collected, skipped_urls, status_log, page_hashes
 
