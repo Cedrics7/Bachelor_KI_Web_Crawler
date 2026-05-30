@@ -16,6 +16,14 @@ Neu (v1.12): DNS-Blocking-Fix – httpx-Calls laufen in separatem Thread via
              ThreadPoolExecutor. Der Haupt-Thread wartet maximal timeout+2s,
              danach wird DNS_TIMEOUT geloggt und das Target übersprungen.
              Verhindert Prozess-Kills durch blockierende OS-DNS-Lookups.
+Neu (v1.13): HTTP→HTTPS-Redirect-Crash-Fix:
+             1. extract_pdf_text erstellt den httpx.Client vollständig im
+                Worker-Thread – verhindert SSL-Blocking im Main-Thread.
+             2. _safe_get fängt alle Exceptions ab (inkl. SSLError,
+                RemoteProtocolError), nicht nur TimeoutError.
+             3. get_url_base normalisiert das Schema auf 'https', damit
+                http://x.de und https://x.de als dieselbe URL erkannt
+                werden und kein doppeltes Crawlen entsteht.
 """
 
 import re
@@ -44,12 +52,15 @@ def _safe_get(client: httpx.Client, url: str, timeout: float):
     Führt client.get() in einem separaten Thread aus.
     Gibt None zurück wenn der OS-DNS-Resolver den Thread blockiert
     (kein httpx-Timeout greift bei DNS-Hangs auf OS-Ebene).
+    Fängt zusätzlich alle Exceptions ab (SSLError, RemoteProtocolError, etc.),
+    damit ein fehlgeschlagener HTTP→HTTPS-Redirect nicht den Crawler crasht.
     """
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(client.get, url, timeout=timeout)
         try:
             return future.result(timeout=timeout + 2)
-        except concurrent.futures.TimeoutError:
+        except Exception:
+            # Fängt TimeoutError, SSLError, RemoteProtocolError, etc.
             return None
 
 
@@ -82,7 +93,15 @@ def is_relevant_url(url: str) -> bool:
 
 
 def get_url_base(url: str) -> str:
+    """
+    Normalisiert eine URL für Dedup-Zwecke.
+    Schema wird auf 'https' vereinheitlicht, damit http://x.de und
+    https://x.de als dieselbe Basis-URL erkannt werden und kein
+    doppeltes Crawlen nach einem HTTP→HTTPS-Redirect entsteht.
+    """
     parsed = urlparse(url)
+    # Schema normalisieren: http und https als identisch behandeln
+    parsed = parsed._replace(scheme="https")
     if not parsed.query:
         return parsed._replace(fragment="").geturl()
     params    = parse_qs(parsed.query, keep_blank_values=True)
@@ -91,9 +110,26 @@ def get_url_base(url: str) -> str:
 
 
 def extract_pdf_text(url: str, max_pages: int) -> str:
+    """
+    Lädt eine PDF-Datei und extrahiert den Text.
+    Der httpx.Client wird vollständig im Worker-Thread erstellt,
+    damit ein HTTP→HTTPS-Redirect keinen SSL-Blocking im Main-Thread auslöst.
+    """
     try:
-        with httpx.Client(follow_redirects=True, max_redirects=_MAX_REDIRECTS) as client:
-            response = _safe_get(client, url, timeout=10)
+        def _fetch():
+            with httpx.Client(
+                follow_redirects=True,
+                max_redirects=_MAX_REDIRECTS
+            ) as client:
+                return client.get(url, timeout=10)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_fetch)
+            try:
+                response = future.result(timeout=12)
+            except Exception:
+                return ""
+
         if response is None:
             return ""
         with fitz.open(stream=response.content, filetype="pdf") as doc:
