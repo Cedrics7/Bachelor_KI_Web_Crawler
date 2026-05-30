@@ -7,11 +7,13 @@ Neu (v1.7): get_subpages() gibt zusätzlich page_hashes zurück.
 Neu (v1.8): Regex-Scan für PDF-Links im Rohtext (JS-gerenderte Seiten).
             assemble_text() fügt Kontext-URL-Hinweis vor jedem PDF-Block ein,
             damit das LLM die korrekte quelle_url zurückgibt.
+Neu (v1.9): requests durch httpx ersetzt – echter DNS-Timeout verhindert
+            prozess-kills bei nicht auflösbaren Domains (z.B. fischdach.de).
 """
 
 import re
 import hashlib
-import requests
+import httpx
 import fitz
 import warnings
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
@@ -65,7 +67,7 @@ def get_url_base(url: str) -> str:
 
 def extract_pdf_text(url: str, max_pages: int) -> str:
     try:
-        response = requests.get(url, timeout=10)
+        response = httpx.get(url, timeout=10, follow_redirects=True)
         with fitz.open(stream=response.content, filetype="pdf") as doc:
             meta   = doc.metadata
             c_date = meta.get("creationDate", "")
@@ -110,17 +112,18 @@ def get_subpages(start_url: str, max_pages: int):
         visited_base.add(curr_base)
         visited_full.add(curr)
         try:
-            resp = requests.get(curr, timeout=CONFIG["timeout_seconds"],
-                                headers={"User-Agent": "BachelorCrawler/1.0"})
+            resp = httpx.get(curr, timeout=CONFIG["timeout_seconds"],
+                             headers={"User-Agent": "BachelorCrawler/1.0"},
+                             follow_redirects=True)
             status_log[curr] = resp.status_code
-            if resp.url != curr:
-                final_base = get_url_base(resp.url)
+            if str(resp.url) != curr:
+                final_base = get_url_base(str(resp.url))
                 if final_base in visited_base and final_base != curr_base:
                     skipped_urls.append(curr)
                     visited_base.discard(curr_base)
                     continue
                 visited_base.add(final_base)
-                visited_full.add(resp.url)
+                visited_full.add(str(resp.url))
 
             if resp.status_code == 200:
                 raw_hash = hashlib.sha256(resp.content).hexdigest()
@@ -172,9 +175,11 @@ def get_subpages(start_url: str, max_pages: int):
                             else:
                                 to_visit.append(nxt)
 
-        except requests.exceptions.Timeout:
+        except PermissionError as e:
+            status_log[curr] = f"PERMISSION_ERROR: {str(e)[:60]}"
+        except httpx.TimeoutException:
             status_log[curr] = "TIMEOUT"
-        except requests.exceptions.ConnectionError:
+        except httpx.ConnectError:
             status_log[curr] = "CONNECTION_ERROR"
         except Exception as ex:
             status_log[curr] = f"ERROR: {str(ex)[:60]}"
