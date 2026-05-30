@@ -12,6 +12,10 @@ Neu (v1.9):  requests durch httpx ersetzt – echter DNS-Timeout verhindert
 Neu (v1.10): max_redirects=5 verhindert Redirect-Loops bei defekten Domains.
 Neu (v1.11): httpx.Client statt httpx.get() – max_redirects wird erst vom
              Client-Objekt unterstützt, nicht von der Top-Level-Funktion.
+Neu (v1.12): DNS-Blocking-Fix – httpx-Calls laufen in separatem Thread via
+             ThreadPoolExecutor. Der Haupt-Thread wartet maximal timeout+2s,
+             danach wird DNS_TIMEOUT geloggt und das Target übersprungen.
+             Verhindert Prozess-Kills durch blockierende OS-DNS-Lookups.
 """
 
 import re
@@ -19,6 +23,7 @@ import hashlib
 import httpx
 import fitz
 import warnings
+import concurrent.futures
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 
@@ -30,8 +35,22 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 # Regex für absolute PDF-URLs im Rohtext (JS-gerenderte Links, data-Attribute, etc.)
 _PDF_URL_RE = re.compile(r'https?://[^\s"\' <>]+\.pdf', re.IGNORECASE)
 
-# Maximale Anzahl an Redirects pro Request (nur via httpx.Client unterstützt)
+# Maximale Anzahl an Redirects pro Request
 _MAX_REDIRECTS = 5
+
+
+def _safe_get(client: httpx.Client, url: str, timeout: float):
+    """
+    Führt client.get() in einem separaten Thread aus.
+    Gibt None zurück wenn der OS-DNS-Resolver den Thread blockiert
+    (kein httpx-Timeout greift bei DNS-Hangs auf OS-Ebene).
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(client.get, url, timeout=timeout)
+        try:
+            return future.result(timeout=timeout + 2)
+        except concurrent.futures.TimeoutError:
+            return None
 
 
 def get_pdf_year(url: str) -> int:
@@ -74,7 +93,9 @@ def get_url_base(url: str) -> str:
 def extract_pdf_text(url: str, max_pages: int) -> str:
     try:
         with httpx.Client(follow_redirects=True, max_redirects=_MAX_REDIRECTS) as client:
-            response = client.get(url, timeout=10)
+            response = _safe_get(client, url, timeout=10)
+        if response is None:
+            return ""
         with fitz.open(stream=response.content, filetype="pdf") as doc:
             meta   = doc.metadata
             c_date = meta.get("creationDate", "")
@@ -124,7 +145,11 @@ def get_subpages(start_url: str, max_pages: int):
             visited_base.add(curr_base)
             visited_full.add(curr)
             try:
-                resp = client.get(curr, timeout=CONFIG["timeout_seconds"])
+                resp = _safe_get(client, curr, CONFIG["timeout_seconds"])
+                if resp is None:
+                    status_log[curr] = "DNS_TIMEOUT"
+                    continue
+
                 status_log[curr] = resp.status_code
                 if str(resp.url) != curr:
                     final_base = get_url_base(str(resp.url))
