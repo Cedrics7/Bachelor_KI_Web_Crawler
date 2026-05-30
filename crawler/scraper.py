@@ -3,12 +3,13 @@ scraper.py
 ==========
 Web-Scraping, PDF-Extraktion und Textzusammenstellung.
 
-Neu (v1.7): get_subpages() gibt zusätzlich page_hashes zurück.
-Neu (v1.8): Regex-Scan für PDF-Links im Rohtext (JS-gerenderte Seiten).
-            assemble_text() fügt Kontext-URL-Hinweis vor jedem PDF-Block ein,
-            damit das LLM die korrekte quelle_url zurückgibt.
-Neu (v1.9): requests durch httpx ersetzt – echter DNS-Timeout verhindert
-            prozess-kills bei nicht auflösbaren Domains (z.B. fischdach.de).
+Neu (v1.7):  get_subpages() gibt zusätzlich page_hashes zurück.
+Neu (v1.8):  Regex-Scan für PDF-Links im Rohtext (JS-gerenderte Seiten).
+             assemble_text() fügt Kontext-URL-Hinweis vor jedem PDF-Block ein,
+             damit das LLM die korrekte quelle_url zurückgibt.
+Neu (v1.9):  requests durch httpx ersetzt – echter DNS-Timeout verhindert
+             Prozess-Kills bei nicht auflösbaren Domains.
+Neu (v1.10): max_redirects=5 verhindert Redirect-Loops bei defekten Domains.
 """
 
 import re
@@ -26,6 +27,9 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # Regex für absolute PDF-URLs im Rohtext (JS-gerenderte Links, data-Attribute, etc.)
 _PDF_URL_RE = re.compile(r'https?://[^\s"\' <>]+\.pdf', re.IGNORECASE)
+
+# Maximale Anzahl an Redirects pro Request
+_MAX_REDIRECTS = 5
 
 
 def get_pdf_year(url: str) -> int:
@@ -67,7 +71,9 @@ def get_url_base(url: str) -> str:
 
 def extract_pdf_text(url: str, max_pages: int) -> str:
     try:
-        response = httpx.get(url, timeout=10, follow_redirects=True)
+        response = httpx.get(url, timeout=10,
+                             follow_redirects=True,
+                             max_redirects=_MAX_REDIRECTS)
         with fitz.open(stream=response.content, filetype="pdf") as doc:
             meta   = doc.metadata
             c_date = meta.get("creationDate", "")
@@ -112,9 +118,11 @@ def get_subpages(start_url: str, max_pages: int):
         visited_base.add(curr_base)
         visited_full.add(curr)
         try:
-            resp = httpx.get(curr, timeout=CONFIG["timeout_seconds"],
+            resp = httpx.get(curr,
+                             timeout=CONFIG["timeout_seconds"],
                              headers={"User-Agent": "BachelorCrawler/1.0"},
-                             follow_redirects=True)
+                             follow_redirects=True,
+                             max_redirects=_MAX_REDIRECTS)
             status_log[curr] = resp.status_code
             if str(resp.url) != curr:
                 final_base = get_url_base(str(resp.url))
@@ -177,6 +185,8 @@ def get_subpages(start_url: str, max_pages: int):
 
         except PermissionError as e:
             status_log[curr] = f"PERMISSION_ERROR: {str(e)[:60]}"
+        except httpx.TooManyRedirects:
+            status_log[curr] = "TOO_MANY_REDIRECTS"
         except httpx.TimeoutException:
             status_log[curr] = "TIMEOUT"
         except httpx.ConnectError:
