@@ -38,6 +38,13 @@ Neu (v1.16): RAM-Fix – soup und resp werden nach der Link-Extraktion
              explizit mit del gelöscht. BeautifulSoup-DOM und HTTP-Response
              verbleiben sonst bis zum Ende von get_subpages() im RAM,
              was bei 50 Unterseiten zu OOM-Kills führen kann.
+Neu (v1.17): RAM-Fix (Hauptverursacher) – resp.text wird einmalig in
+             raw_html gespeichert, danach wird resp sofort gelöscht (del resp).
+             Vorher: resp.content (bytes) + resp.text (decoded str) + soup-DOM
+             + extract_main_text-soup existierten gleichzeitig im RAM.
+             Jetzt: nur noch raw_html (str) + soup (DOM) zur gleichen Zeit.
+             extract_main_text() nimmt raw_html entgegen statt resp.text
+             nochmals auszuwerten. del raw_html nach Link-Extraktion.
 """
 
 import re
@@ -100,7 +107,9 @@ def extract_main_text(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
         tag.decompose()
-    return soup.get_text(separator=" ", strip=True)
+    text = soup.get_text(separator=" ", strip=True)
+    soup.decompose()
+    return text
 
 
 def is_relevant_url(url: str) -> bool:
@@ -212,6 +221,7 @@ def get_subpages(start_url: str, max_pages: int):
                         if final_base in visited_base and final_base != curr_base:
                             skipped_urls.append(curr)
                             visited_base.discard(curr_base)
+                            del resp
                             continue
                         visited_base.add(final_base)
                         visited_full.add(str(resp.url))
@@ -221,26 +231,36 @@ def get_subpages(start_url: str, max_pages: int):
                         page_hashes[curr_base] = raw_hash
 
                         if curr.lower().endswith(".pdf"):
+                            del resp
                             text = extract_pdf_text(curr, CONFIG["max_pdf_pages"])
                             if text:
                                 pdf_collected.append((curr, text))
                             del text
                         else:
-                            text = extract_main_text(resp.text)
-                            html_collected.append((curr, text))
-                            del text
+                            # raw_html einmalig extrahieren, resp sofort freigeben
+                            raw_html = resp.text
+                            del resp
 
-                            soup = BeautifulSoup(resp.text, "html.parser")
+                            # Klartext extrahieren (erstellt intern soup, gibt ihn frei)
+                            page_text = extract_main_text(raw_html)
+                            html_collected.append((curr, page_text))
+                            del page_text
 
+                            # Links + PDF-Regex aus raw_html
+                            soup = BeautifulSoup(raw_html, "html.parser")
                             bs_links = set()
                             for link in soup.find_all("a", href=True):
                                 nxt = urljoin(start_url, link["href"])
                                 bs_links.add(nxt)
+                            soup.decompose()
+                            del soup
 
                             regex_pdf_links = set()
-                            for raw_url in _PDF_URL_RE.findall(resp.text):
+                            for raw_url in _PDF_URL_RE.findall(raw_html):
                                 if urlparse(raw_url).netloc == base_domain:
                                     regex_pdf_links.add(raw_url)
+
+                            del raw_html
 
                             neu_via_regex = regex_pdf_links - bs_links
                             if neu_via_regex:
@@ -249,9 +269,7 @@ def get_subpages(start_url: str, max_pages: int):
                                                    + ", ".join(u.split('/')[-1] for u in neu_via_regex))
 
                             alle_links = bs_links | regex_pdf_links
-
-                            # RAM freigeben: soup und resp werden nicht mehr benötigt
-                            del soup, bs_links, regex_pdf_links, neu_via_regex
+                            del bs_links, regex_pdf_links, neu_via_regex
 
                             for nxt in alle_links:
                                 nxt_base = get_url_base(nxt)
@@ -265,8 +283,8 @@ def get_subpages(start_url: str, max_pages: int):
                                         to_visit.insert(0, nxt)
                                     else:
                                         to_visit.append(nxt)
-
-                    del resp
+                    else:
+                        del resp
 
                 except PermissionError as e:
                     status_log[curr] = f"PERMISSION_ERROR: {str(e)[:60]}"
