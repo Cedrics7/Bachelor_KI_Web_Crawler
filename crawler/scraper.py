@@ -45,6 +45,11 @@ Neu (v1.17): RAM-Fix (Hauptverursacher) – resp.text wird einmalig in
              Jetzt: nur noch raw_html (str) + soup (DOM) zur gleichen Zeit.
              extract_main_text() nimmt raw_html entgegen statt resp.text
              nochmals auszuwerten. del raw_html nach Link-Extraktion.
+Neu (v1.18): Domain-Redirect-Guard – wenn der erste Request auf die
+             start_url zu einer anderen Domain führt (z.B. vestenbergsgreuth.de
+             → externe VG-Domain), wird das Target sofort als EXTERNAL_REDIRECT
+             geloggt und übersprungen. Verhindert unkontrolliertes Crawlen
+             fremder Domains und OOM-Kill durch endlose Link-Sammlung.
 """
 
 import re
@@ -86,6 +91,11 @@ def _safe_get(client: httpx.Client, url: str, timeout: float):
         return None
     finally:
         executor.shutdown(wait=False)
+
+
+def _strip_www(netloc: str) -> str:
+    """Entfernt 'www.' Präfix für Domain-Vergleich."""
+    return netloc.lower().removeprefix("www.")
 
 
 def get_pdf_year(url: str) -> int:
@@ -194,6 +204,7 @@ def get_subpages(start_url: str, max_pages: int):
     page_hashes    = {}
     base_domain    = urlparse(start_url).netloc
     prio_keywords  = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
+    first_request  = True   # Flag für Domain-Redirect-Guard beim ersten Request
 
     try:
         with httpx.Client(
@@ -214,6 +225,20 @@ def get_subpages(start_url: str, max_pages: int):
                     if resp is None:
                         status_log[curr] = "DNS_TIMEOUT"
                         continue
+
+                    # --- Domain-Redirect-Guard (nur beim ersten Request) ---
+                    # Prüft ob die start_url auf eine komplett andere Domain
+                    # redirectet (z.B. Gemeinde hat nur Weiterleitungsseite).
+                    # www-Präfix wird ignoriert (vestenbergsgreuth.de ==
+                    # www.vestenbergsgreuth.de).
+                    if first_request:
+                        first_request = False
+                        final_domain = urlparse(str(resp.url)).netloc
+                        if _strip_www(final_domain) != _strip_www(base_domain):
+                            log_event("🔀", f"EXTERNAL_REDIRECT: {base_domain} → {final_domain} – Target wird übersprungen.")
+                            status_log[curr] = f"EXTERNAL_REDIRECT:{final_domain}"
+                            del resp
+                            break  # gesamtes Target abbrechen
 
                     status_log[curr] = resp.status_code
                     if str(resp.url) != curr:
