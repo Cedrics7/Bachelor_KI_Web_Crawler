@@ -34,6 +34,10 @@ Neu (v1.15): _safe_get verwendet executor.shutdown(wait=False) statt
              auf einen hängenden Thread vom OS gekillt wird (SIGKILL).
              Bei Timeout/Fehler wird der Thread losgelassen und None
              zurückgegeben.
+Neu (v1.16): RAM-Fix – soup und resp werden nach der Link-Extraktion
+             explizit mit del gelöscht. BeautifulSoup-DOM und HTTP-Response
+             verbleiben sonst bis zum Ende von get_subpages() im RAM,
+             was bei 50 Unterseiten zu OOM-Kills führen kann.
 """
 
 import re
@@ -220,8 +224,12 @@ def get_subpages(start_url: str, max_pages: int):
                             text = extract_pdf_text(curr, CONFIG["max_pdf_pages"])
                             if text:
                                 pdf_collected.append((curr, text))
+                            del text
                         else:
-                            html_collected.append((curr, extract_main_text(resp.text)))
+                            text = extract_main_text(resp.text)
+                            html_collected.append((curr, text))
+                            del text
+
                             soup = BeautifulSoup(resp.text, "html.parser")
 
                             bs_links = set()
@@ -242,6 +250,9 @@ def get_subpages(start_url: str, max_pages: int):
 
                             alle_links = bs_links | regex_pdf_links
 
+                            # RAM freigeben: soup und resp werden nicht mehr benötigt
+                            del soup, bs_links, regex_pdf_links, neu_via_regex
+
                             for nxt in alle_links:
                                 nxt_base = get_url_base(nxt)
                                 if (urlparse(nxt).netloc == base_domain
@@ -254,6 +265,8 @@ def get_subpages(start_url: str, max_pages: int):
                                         to_visit.insert(0, nxt)
                                     else:
                                         to_visit.append(nxt)
+
+                    del resp
 
                 except PermissionError as e:
                     status_log[curr] = f"PERMISSION_ERROR: {str(e)[:60]}"

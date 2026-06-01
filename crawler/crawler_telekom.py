@@ -216,6 +216,9 @@ def run_crawler():
                     ort, html_pages, pdf_pages, CONFIG["max_text_chars"]
                 )
 
+                # RAM freigeben: Rohlisten werden nach assemble_text() nicht mehr benötigt
+                del html_pages, pdf_pages
+
                 if not text_bulk.strip():
                     fehler_codes = set(status_log.values())
                     fehler_info  = ", ".join(str(c) for c in sorted(fehler_codes, key=str))
