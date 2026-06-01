@@ -29,6 +29,11 @@ Neu (v1.14): Outer-try/except um den gesamten httpx.Client-Block in
              Kontext selbst fehlschlägt (z.B. 502 + DNS-Fehler gleichzeitig,
              notresolvable, Network unreachable). Gibt immer leere Listen
              zurück statt eine unkontrollierte Exception zu werfen.
+Neu (v1.15): _safe_get verwendet executor.shutdown(wait=False) statt
+             with-Block – verhindert dass der Haupt-Prozess beim Warten
+             auf einen hängenden Thread vom OS gekillt wird (SIGKILL).
+             Bei Timeout/Fehler wird der Thread losgelassen und None
+             zurückgegeben.
 """
 
 import re
@@ -56,17 +61,20 @@ def _safe_get(client: httpx.Client, url: str, timeout: float):
     """
     Führt client.get() in einem separaten Thread aus.
     Gibt None zurück wenn der OS-DNS-Resolver den Thread blockiert
-    (kein httpx-Timeout greift bei DNS-Hangs auf OS-Ebene).
-    Fängt zusätzlich alle Exceptions ab (SSLError, RemoteProtocolError, etc.),
-    damit ein fehlgeschlagener HTTP→HTTPS-Redirect nicht den Crawler crasht.
+    oder die Verbindung hängt (z.B. 502, notresolvable, Network unreachable).
+
+    Verwendet shutdown(wait=False) statt with-Block, damit der Haupt-Thread
+    den Worker-Thread bei Timeout loslässt und nicht vom OS gekillt wird.
     """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(client.get, url, timeout=timeout)
-        try:
-            return future.result(timeout=timeout + 2)
-        except Exception:
-            # Fängt TimeoutError, SSLError, RemoteProtocolError, etc.
-            return None
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(client.get, url, timeout=timeout)
+    try:
+        return future.result(timeout=timeout + 2)
+    except Exception:
+        future.cancel()
+        return None
+    finally:
+        executor.shutdown(wait=False)
 
 
 def get_pdf_year(url: str) -> int:
@@ -105,7 +113,6 @@ def get_url_base(url: str) -> str:
     doppeltes Crawlen nach einem HTTP→HTTPS-Redirect entsteht.
     """
     parsed = urlparse(url)
-    # Schema normalisieren: http und https als identisch behandeln
     parsed = parsed._replace(scheme="https")
     if not parsed.query:
         return parsed._replace(fragment="").geturl()
@@ -128,12 +135,15 @@ def extract_pdf_text(url: str, max_pages: int) -> str:
             ) as client:
                 return client.get(url, timeout=10)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_fetch)
-            try:
-                response = future.result(timeout=12)
-            except Exception:
-                return ""
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_fetch)
+        try:
+            response = future.result(timeout=12)
+        except Exception:
+            future.cancel()
+            return ""
+        finally:
+            executor.shutdown(wait=False)
 
         if response is None:
             return ""
@@ -214,22 +224,16 @@ def get_subpages(start_url: str, max_pages: int):
                             html_collected.append((curr, extract_main_text(resp.text)))
                             soup = BeautifulSoup(resp.text, "html.parser")
 
-                            # --- BeautifulSoup: normale <a href> Links ---
                             bs_links = set()
                             for link in soup.find_all("a", href=True):
                                 nxt = urljoin(start_url, link["href"])
                                 bs_links.add(nxt)
 
-                            # --- Regex: PDF-URLs im Rohtext (JS-gerendert, data-Attribute, etc.) ---
-                            # Erfasst Links die nicht als <a href> im statischen HTML stehen,
-                            # z.B. window.open('...pdf'), data-href="...pdf" oder JSON-Payloads.
                             regex_pdf_links = set()
                             for raw_url in _PDF_URL_RE.findall(resp.text):
-                                # Nur Links der gleichen Domain übernehmen
                                 if urlparse(raw_url).netloc == base_domain:
                                     regex_pdf_links.add(raw_url)
 
-                            # Neue PDF-Links durch Regex? Kurze Info ins Log.
                             neu_via_regex = regex_pdf_links - bs_links
                             if neu_via_regex:
                                 log_event("🔎", f"Regex-Scan fand {len(neu_via_regex)} zus. PDF(s) "
@@ -245,7 +249,6 @@ def get_subpages(start_url: str, max_pages: int):
                                         and nxt_base not in visited_base
                                         and nxt not in visited_full):
                                     visited_full.add(nxt)
-                                    # PDFs (inkl. via Regex gefundene) immer priorisieren
                                     if nxt.lower().endswith(".pdf") or any(
                                             p in nxt.lower() for p in prio_keywords):
                                         to_visit.insert(0, nxt)
@@ -282,12 +285,6 @@ def assemble_text(ort: str, html_pages: list, pdf_pages: list, limit: int):
     verbleibend    = limit - len(text_bulk)
 
     def _pdf_block(url: str, content: str) -> str:
-        """
-        Baut den Text-Block für eine PDF inkl. explizitem Kontext-Hinweis.
-        Der Hinweis stellt sicher, dass das LLM als quelle_url die direkte
-        PDF-URL zurückgibt – auch wenn die PDF über eine Zwischen-Seite
-        verlinkt war (JS-Rendering, data-href, etc.).
-        """
         return (
             f"\n--- URL: {url} ---"
             f"\n[QUELLE: Direkte PDF-URL ist {url} – diese URL als quelle_url verwenden]\n"
