@@ -41,7 +41,7 @@ CONFIG = {
     "tpm_limit":               1_000_000,
     "rpd_limit":               500,
     "prio_region":             "",
-    "force_ags":               [],
+    "force_ags":               [""],
 
     "ziel_kategorien": {
         "Sanierung":     ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
@@ -86,7 +86,7 @@ CONFIG = {
     # NEU v2.0: JS-Rendering-Einstellungen
     # -------------------------------------------------------------------------
     # Haupt-Schalter: False = reines httpx (wie original), True = Playwright-Fallback
-    "js_rendering":    False,
+    "js_rendering":    True,
 
     # Minimale Zeichenzahl im Response-Body, unter der JS-Rendering ausgelöst wird.
     "js_min_chars":    500,
