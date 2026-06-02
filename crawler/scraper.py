@@ -50,9 +50,20 @@ Neu (v1.18): Domain-Redirect-Guard – wenn der erste Request auf die
              → externe VG-Domain), wird das Target sofort als EXTERNAL_REDIRECT
              geloggt und übersprungen. Verhindert unkontrolliertes Crawlen
              fremder Domains und OOM-Kill durch endlose Link-Sammlung.
+Neu (v1.19): Queue-Guard – MAX_QUEUE=300 begrenzt die to_visit-Liste.
+             Verhindert unkontrolliertes Anwachsen der URL-Queue bei Seiten
+             mit vielen internen Redirects oder Link-Explosionen, die trotz
+             Domain-Redirect-Guard (v1.18) auftreten können (z.B. nach dem
+             ersten Request). Hauptursache des OOM-Kills bei Redirects.
+Neu (v1.20): visited_full-Trim – bei >2000 Einträgen wird visited_full auf
+             visited_base zurückgesetzt, um RAM-Akkumulation bei großen Sites
+             zu verhindern. RAM-Warn-Logger: loggt eine Warnung wenn der
+             Prozess >400 MB RSS verbraucht – zeigt queue- und visited-Größe
+             für spätere Diagnose des Absturzpunkts an.
 """
 
 import re
+import resource
 import hashlib
 import httpx
 import fitz
@@ -71,6 +82,12 @@ _PDF_URL_RE = re.compile(r'https?://[^\s"\'<>]+\.pdf', re.IGNORECASE)
 
 # Maximale Anzahl an Redirects pro Request
 _MAX_REDIRECTS = 5
+
+# Maximale Größe der to_visit-Queue (v1.19 – Queue-Guard gegen OOM)
+_MAX_QUEUE = 300
+
+# RAM-Warnschwelle in MB (v1.20)
+_RAM_WARN_MB = 400
 
 
 def _safe_get(client: httpx.Client, url: str, timeout: float):
@@ -220,6 +237,19 @@ def get_subpages(start_url: str, max_pages: int):
                     continue
                 visited_base.add(curr_base)
                 visited_full.add(curr)
+
+                # --- RAM-Warn-Logger (v1.20) ---
+                mem_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+                if mem_mb > _RAM_WARN_MB:
+                    log_event("⚠️", f"RAM-Warnung: {mem_mb:.0f} MB | "
+                                    f"queue={len(to_visit)} | "
+                                    f"visited={len(visited_full)} | "
+                                    f"url={curr[:60]}")
+
+                # --- visited_full-Trim (v1.20) ---
+                if len(visited_full) > 2000:
+                    visited_full = set(visited_base)
+
                 try:
                     resp = _safe_get(client, curr, CONFIG["timeout_seconds"])
                     if resp is None:
@@ -301,7 +331,8 @@ def get_subpages(start_url: str, max_pages: int):
                                 if (urlparse(nxt).netloc == base_domain
                                         and is_relevant_url(nxt)
                                         and nxt_base not in visited_base
-                                        and nxt not in visited_full):
+                                        and nxt not in visited_full
+                                        and len(to_visit) < _MAX_QUEUE):  # v1.19 Queue-Guard
                                     visited_full.add(nxt)
                                     if nxt.lower().endswith(".pdf") or any(
                                             p in nxt.lower() for p in prio_keywords):
