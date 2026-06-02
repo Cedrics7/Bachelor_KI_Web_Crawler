@@ -18,21 +18,27 @@ Neu (v2.0 – JS-Support):
 Neu (v2.1 – VG-Redirect-Fix):
     - _is_vg_redirect(): erkennt Verwaltungsgemeinschaft-Redirects.
       Wenn munningen.de → vg-oettingen.de/mitgliedsgemeinden/munningen,
-      prüft die Funktion ob der Gemeindenamen (aus der ursprünglichen
-      Domain extrahiert) im Pfad der Ziel-URL vorkommt.
+      prüft die Funktion ob der Gemeindenamen im Pfad der Ziel-URL vorkommt.
       Falls ja: Guard wird übersprungen, Crawler folgt dem Redirect.
-      Die neue base_domain wird auf die Ziel-Domain aktualisiert, damit
-      alle weiteren Links auf der VG-Seite korrekt gefiltert werden.
-      Zusätzlich: der Queue-Guard (_MAX_QUEUE) wird auf
-      CONFIG["vg_max_queue"] reduziert, um Link-Explosionen auf VG-Seiten
-      (die viele Gemeinden aggregieren) zu verhindern.
+      effective_domain + effective_start_path verhindern, dass der Crawler
+      alle anderen Mitgliedsgemeinden der VG mitkrawlt.
+
+Neu (v2.2 – User-Agent-Fix):
+    - httpx.Client verwendet jetzt CONFIG["http_user_agent"] statt dem
+      auffälligen "BachelorCrawler/1.0".
+    - TYPO3- und Apache-Proxies blockieren den alten UA mit 503/403.
+      Ein echter Chrome-UA umgeht diese Blocking-Regeln.
+    - Munningen (TYPO3-Redirect über VG-Server) und Oberottmarshausen
+      (Apache 403) werden damit korrekt gecrawlt.
 
 Konfiguration:
-    CONFIG["js_rendering"]  = True/False     – JS-Rendering Schalter
-    CONFIG["js_min_chars"]  = 500            – Schwellwert JS-Erkennung
-    CONFIG["js_timeout"]    = 20             – Playwright-Timeout (s)
-    CONFIG["js_wait_until"] = "networkidle"  – Playwright wait_until
-    CONFIG["vg_max_queue"]  = 80             – Queue-Limit bei VG-Redirects
+    CONFIG["js_rendering"]    = True/False     – JS-Rendering Schalter
+    CONFIG["js_min_chars"]    = 500            – Schwellwert JS-Erkennung
+    CONFIG["js_timeout"]      = 20             – Playwright-Timeout (s)
+    CONFIG["js_wait_until"]   = "networkidle"  – Playwright wait_until
+    CONFIG["js_user_agent"]   = "..."          – UA für Playwright-Requests
+    CONFIG["http_user_agent"] = "..."          – UA für httpx-Requests (NEU)
+    CONFIG["vg_max_queue"]    = 80             – Queue-Limit bei VG-Redirects
 """
 
 import re
@@ -72,6 +78,14 @@ from logger import log_event, _write_console_log, get_german_time
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
+# User-Agent für httpx – wird einmal beim Modulstart aus CONFIG gelesen
+_HTTP_USER_AGENT = CONFIG.get(
+    "http_user_agent",
+    "Mozilla/5.0 (X11; Linux x86_64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
 
 # ---------------------------------------------------------------------------
 # VG-Redirect-Erkennung (v2.1)
@@ -83,17 +97,11 @@ def _extract_gemeinde_slug(netloc: str) -> str:
 
     Beispiele:
         www.munningen.de      → "munningen"
-        munningen.de          → "munningen"
         www.bad-windsheim.de  → "bad-windsheim"
-        stadt-ansbach.de      → "stadt-ansbach"  ("stadt-" bleibt erhalten –
-                                                   im VG-Pfad steht er meistens
-                                                   auch, oder der Fallback
-                                                   auf "ansbach" greift über
-                                                   _slug_variants)
+        stadt-ansbach.de      → "stadt-ansbach"
     """
-    # www. entfernen, TLD (.de / .com / ...) entfernen
-    name = _strip_www(netloc)          # "munningen.de"
-    name = re.sub(r'\.[a-z]{2,}$', '', name)  # "munningen"
+    name = _strip_www(netloc)
+    name = re.sub(r'\.[a-z]{2,}$', '', name)
     return name.lower()
 
 
@@ -101,13 +109,9 @@ def _slug_variants(slug: str) -> list[str]:
     """
     Gibt Varianten des Slugs zurück, die im VG-Pfad vorkommen könnten.
 
-    Beispiel für "stadt-ansbach":
-        ["stadt-ansbach", "ansbach"]
-    Für "bad-windsheim":
-        ["bad-windsheim", "windsheim"]
+    Beispiel: "stadt-ansbach" → ["stadt-ansbach", "ansbach"]
     """
     variants = [slug]
-    # Wenn Slug mit bekanntem Präfix beginnt, auch ohne Präfix probieren
     for prefix in ("stadt-", "markt-", "gemeinde-", "bad-"):
         if slug.startswith(prefix):
             variants.append(slug[len(prefix):])
@@ -119,24 +123,13 @@ def _is_vg_redirect(base_domain: str, final_url: str) -> bool:
     """
     Gibt True zurück wenn der Redirect ein zulässiger VG-/Sammelseiten-Redirect ist.
 
-    Bedingung: Der Gemeindename (aus base_domain extrahiert) oder eine seiner
-    Varianten muss im Pfad der final_url als Pfadsegment vorkommen.
+    Bedingung: Gemeindeslug (aus base_domain) muss als Pfadsegment in final_url vorkommen.
 
-    Beispiel:
-        base_domain = "www.munningen.de"
-        final_url   = "https://www.vg-oettingen.de/mitgliedsgemeinden/munningen"
-        slug        = "munningen"
-        → "munningen" ist Pfadsegment → True ✓
-
-    Gegenbeispiel (echter Fremd-Redirect):
-        base_domain = "www.musterdorf.de"
-        final_url   = "https://www.kreis-ansbach.de/"
-        slug        = "musterdorf"
-        → "musterdorf" nicht im Pfad → False ✓
+    True:  munningen.de  → vg-oettingen.de/mitgliedsgemeinden/munningen
+    False: musterdorf.de → kreis-ansbach.de/   (kein Slug im Pfad)
     """
-    slug     = _extract_gemeinde_slug(base_domain)
-    variants = _slug_variants(slug)
-    # Pfadsegmente aus final_url extrahieren (lowercase)
+    slug          = _extract_gemeinde_slug(base_domain)
+    variants      = _slug_variants(slug)
     path_segments = [s.lower() for s in urlparse(final_url).path.split("/") if s]
     return any(v in path_segments for v in variants)
 
@@ -149,23 +142,16 @@ def _is_js_rendered(html: str) -> bool:
     """
     Erkennt ob eine Seite wahrscheinlich JS-Rendering benötigt.
 
-    Kriterien (mindestens eines muss zutreffen):
-      1. Zu wenig sichtbarer Text (< js_min_chars Zeichen nach strip)
-      2. Typische SPA-Marker im HTML (<noscript>, id="root", id="app",
-         data-reactroot, ng-version, data-v-app)
+    Kriterien (mindestens eines):
+      1. Zu wenig sichtbarer Text (< js_min_chars)
+      2. Typische SPA-Marker (id="root", data-reactroot, ng-version, ...)
     """
     min_chars = CONFIG.get("js_min_chars", 500)
     if len(html.strip()) < min_chars:
         return True
     spa_markers = [
-        '<noscript>',
-        'id="root"',
-        "id='root'",
-        'id="app"',
-        "id='app'",
-        'data-reactroot',
-        'ng-version',
-        'data-v-app',
+        '<noscript>', 'id="root"', "id='root'",
+        'id="app"', "id='app'", 'data-reactroot', 'ng-version', 'data-v-app',
     ]
     html_lower = html.lower()
     return any(m.lower() in html_lower for m in spa_markers)
@@ -173,19 +159,13 @@ def _is_js_rendered(html: str) -> bool:
 
 def _fetch_with_playwright(url: str) -> str | None:
     """
-    Lädt eine Seite mit Playwright (Chromium, headless) und gibt das
-    vollständig gerenderte HTML zurück.
-
-    Gibt None zurück bei Fehler oder Timeout.
-    Playwright wird lazy importiert – der Rest des Crawlers funktioniert
-    auch ohne installiertes Playwright (js_rendering = False).
+    Lädt eine Seite mit Playwright (Chromium, headless).
+    Gibt None bei Fehler/Timeout zurück.
+    Playwright wird lazy importiert – ohne Installation bleibt js_rendering = False.
     """
     timeout_ms = int(CONFIG.get("js_timeout", 20) * 1000)
     wait_until = CONFIG.get("js_wait_until", "networkidle")
-    user_agent = CONFIG.get("js_user_agent",
-                            "Mozilla/5.0 (X11; Linux x86_64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/124.0.0.0 Safari/537.36")
+    user_agent = CONFIG.get("js_user_agent", _HTTP_USER_AGENT)
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
         with sync_playwright() as p:
@@ -193,7 +173,6 @@ def _fetch_with_playwright(url: str) -> str | None:
             try:
                 context = browser.new_context(user_agent=user_agent)
                 page    = context.new_page()
-                # Ressourcen-Blocking: Bilder/Fonts/Media sparen RAM & Zeit
                 page.route(
                     "**/*",
                     lambda route: route.abort()
@@ -201,68 +180,60 @@ def _fetch_with_playwright(url: str) -> str | None:
                     else route.continue_()
                 )
                 page.goto(url, timeout=timeout_ms, wait_until=wait_until)
-                html = page.content()
-                return html
+                return page.content()
             except PWTimeout:
-                _write_console_log(
-                    f"[{get_german_time()}] ⏱️  Playwright-Timeout ({url[:60]})"
-                )
+                _write_console_log(f"[{get_german_time()}] ⏱️  Playwright-Timeout ({url[:60]})")
                 return None
             except Exception as e:
-                _write_console_log(
-                    f"[{get_german_time()}] ❌ Playwright-Fehler ({url[:60]}): {e}"
-                )
+                _write_console_log(f"[{get_german_time()}] ❌ Playwright-Fehler ({url[:60]}): {e}")
                 return None
             finally:
                 browser.close()
     except ImportError:
         _write_console_log(
             f"[{get_german_time()}] ⚠️  Playwright nicht installiert – "
-            "JS-Rendering deaktiviert. Bitte: pip install playwright && "
-            "playwright install chromium"
+            "pip install playwright && playwright install chromium"
         )
         return None
 
 
 # ---------------------------------------------------------------------------
-# Überschriebene get_subpages() mit JS-Fallback + VG-Redirect-Fix
+# Überschriebene get_subpages() – v2.2
 # ---------------------------------------------------------------------------
 
 def get_subpages(start_url: str, max_pages: int):
     """
     Wie scraper.get_subpages(), aber mit:
+      - Browser-like User-Agent für httpx (v2.2) – verhindert 503/403-Blocking
+      - VG-Redirect-Support (v2.1)
       - optionalem Playwright-Fallback für JS-gerenderte Seiten (v2.0)
-      - VG-Redirect-Support: Gemeinden die auf VG-Sammelseiten zeigen
-        werden korrekt gecrawlt statt übersprungen (v2.1)
 
     Rückgabe: identisch zu scraper.get_subpages()
         html_collected, pdf_collected, skipped_urls, status_log, page_hashes
     """
-    js_rendering      = CONFIG.get("js_rendering", False)
-    vg_max_queue      = CONFIG.get("vg_max_queue", 80)
-    visited_base      = set()
-    visited_full      = set()
-    to_visit          = [start_url]
-    html_collected    = []
-    pdf_collected     = []
-    skipped_urls      = []
-    status_log        = {}
-    page_hashes       = {}
-    base_domain       = urlparse(start_url).netloc
-    # effective_domain kann bei VG-Redirect auf die VG-Domain wechseln
-    effective_domain  = base_domain
-    # effective_start_path: bei VG-Redirect nur Links unterhalb dieses Pfades crawlen
+    js_rendering         = CONFIG.get("js_rendering", False)
+    vg_max_queue         = CONFIG.get("vg_max_queue", 80)
+    visited_base         = set()
+    visited_full         = set()
+    to_visit             = [start_url]
+    html_collected       = []
+    pdf_collected        = []
+    skipped_urls         = []
+    status_log           = {}
+    page_hashes          = {}
+    base_domain          = urlparse(start_url).netloc
+    effective_domain     = base_domain
     effective_start_path = ""
-    prio_keywords     = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
-    first_request     = True
-    js_fallback_count = 0
-    active_max_queue  = _MAX_QUEUE   # kann bei VG-Redirect reduziert werden
+    prio_keywords        = ["aktuell", "news", "nachricht", "bauen", "projekt", "bebauungsplan"]
+    first_request        = True
+    js_fallback_count    = 0
+    active_max_queue     = _MAX_QUEUE
 
     try:
         with httpx.Client(
             follow_redirects=True,
             max_redirects=_MAX_REDIRECTS,
-            headers={"User-Agent": "BachelorCrawler/1.0"}
+            headers={"User-Agent": _HTTP_USER_AGENT},   # v2.2: Browser-UA statt BachelorCrawler
         ) as client:
             while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
                 curr      = to_visit.pop(0)
@@ -273,12 +244,10 @@ def get_subpages(start_url: str, max_pages: int):
                 visited_base.add(curr_base)
                 visited_full.add(curr)
 
-                # RAM-Warn-Logger
                 mem_mb = _get_rss_mb()
                 if mem_mb > _RAM_WARN_MB:
                     log_event("⚠️", f"RAM-Warnung: {mem_mb:.0f} MB | "
-                                    f"queue={len(to_visit)} | "
-                                    f"visited={len(visited_full)} | "
+                                    f"queue={len(to_visit)} | visited={len(visited_full)} | "
                                     f"url={curr[:60]}")
 
                 if len(visited_full) > 2000:
@@ -295,14 +264,11 @@ def get_subpages(start_url: str, max_pages: int):
                     # ----------------------------------------------------------
                     if first_request:
                         first_request = False
-                        final_url    = str(resp.url)
-                        final_domain = urlparse(final_url).netloc
+                        final_url     = str(resp.url)
+                        final_domain  = urlparse(final_url).netloc
 
                         if _strip_www(final_domain) != _strip_www(base_domain):
-                            # Prüfen: ist es ein zulässiger VG-/Subpath-Redirect?
                             if _is_vg_redirect(base_domain, final_url):
-                                # VG-Redirect: Crawler folgt, aber mit eingeschränkter Domain
-                                # und reduziertem Queue-Limit
                                 effective_domain     = final_domain
                                 effective_start_path = urlparse(final_url).path.rstrip("/")
                                 active_max_queue     = vg_max_queue
@@ -311,7 +277,6 @@ def get_subpages(start_url: str, max_pages: int):
                                                f"{effective_start_path} "
                                                f"(Queue-Limit: {active_max_queue})")
                             else:
-                                # Echter Fremd-Redirect → wie bisher blocken
                                 log_event("🔀", f"EXTERNAL_REDIRECT: {base_domain} → "
                                                f"{final_domain} – Target wird übersprungen.")
                                 status_log[curr] = f"EXTERNAL_REDIRECT:{final_domain}"
@@ -367,16 +332,13 @@ def get_subpages(start_url: str, max_pages: int):
                             for raw_url in _PDF_URL_RE.findall(raw_html):
                                 if urlparse(raw_url).netloc == effective_domain:
                                     regex_pdf_links.add(raw_url)
-
                             del raw_html
 
                             neu_via_regex = regex_pdf_links - bs_links
                             if neu_via_regex:
                                 log_event("🔎", f"Regex-Scan fand {len(neu_via_regex)} zus. "
                                                f"PDF(s) auf {curr[:60]}: "
-                                               + ", ".join(
-                                                   u.split('/')[-1] for u in neu_via_regex
-                                               ))
+                                               + ", ".join(u.split('/')[-1] for u in neu_via_regex))
 
                             alle_links = bs_links | regex_pdf_links
                             del bs_links, regex_pdf_links, neu_via_regex
@@ -385,13 +347,11 @@ def get_subpages(start_url: str, max_pages: int):
                                 nxt_parsed = urlparse(nxt)
                                 nxt_base   = get_url_base(nxt)
 
-                                # Domain-Filter: bei VG-Redirect nur effective_domain
+                                # Domain-Filter
                                 if nxt_parsed.netloc != effective_domain:
                                     continue
 
-                                # Subpath-Filter: bei VG-Redirect nur Links unterhalb
-                                # des Gemeinde-Pfades zulassen (verhindert komplettes
-                                # VG-Crawlen aller anderen Mitgliedsgemeinden)
+                                # Subpath-Filter bei VG-Redirects
                                 if effective_start_path:
                                     if not nxt_parsed.path.startswith(effective_start_path):
                                         continue
