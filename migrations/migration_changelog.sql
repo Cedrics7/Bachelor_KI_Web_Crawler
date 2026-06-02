@@ -68,7 +68,39 @@ INSERT INTO changelog (version, release_date, title, description, commit_sha) VA
 
 ('1.7.0', '2026-05-29', 'Unterseiten-Hashing & Kontext-Chunking',
     'SHA-256-Hashing aller gecrawlten Unterseiten/PDFs für differenzielle Crawl-Läufe (nur geänderte Seiten ans LLM), kontextbewusstes Chunking mit konfigurierbarem Overlap (chunk_overlap in CONFIG), neue DB-Spalte subpage_hashes in crawl_targets',
-    '4811423');
+    '48114232508db9eca4899ff19a108fcc8ebbb185'),
+
+('1.8.0', '2026-05-29', 'Modularisierung & Kategorie-Erweiterung',
+    'Crawler in Teilmodule aufgeteilt (config.py, logger.py, rate_limiter.py, scraper.py, llm_client.py, crawler_telekom.py), Kategorie Tiefbau aufgeteilt in Straßenbau + Brückenbau, force_ags-Option für erzwungene Crawl-Targets, Regex-Scan für JS-gerenderte PDF-Links, URL-Kontext-Hint in assemble_text()',
+    'df2db7e1d89fafc572c0e23d53f616759cc13db8'),
+
+('1.9.0', '2026-05-29', 'Frontend-Bugfixes & content_hash-Korrektur',
+    'content_hash in crawl_targets verschoben (korrekte Hash-Vergleiche), Mänahmen-Modal mit direktem API-Endpunkt GET /api/bestandsdaten/{id} (kein Table-Scan mehr), Filter-Parameter-Reset beim Seitenwechsel, Prompt-Fehlerbehebungen (Zeitraum-Filter, Kosten-Summary, Live-Log-Keys)',
+    '4a523410fa1af23829d3cfb2d47d56b22f110d80'),
+
+('1.10.0', '2026-05-29', 'Crawler-Paket & Import-Fixes',
+    'Crawler-Module in crawler/-Paket verschoben, alle internen Importe korrigiert (crawler.-Präfix entfernt)',
+    'b6892869c600bab18a3c2b5bd326f9499c744a68'),
+
+('1.11.0', '2026-05-30', 'HTTP-Stabilität & DNS-Robustheit',
+    'requests durch httpx ersetzt (echter DNS-Timeout), httpx.Client für max_redirects-Unterstützung, max_redirects=5 gegen Redirect-Loops, httpx-Calls in ThreadPoolExecutor gegen DNS-Blocking-Kills, outer try/except gegen Absturz bei nicht erreichbaren Hosts (502/unresolvable)',
+    '6982503921d747eb2ac4beba6ac0074ab4026515'),
+
+('1.12.0', '2026-05-30', 'HTTP→HTTPS & SSL-Fixes',
+    'get_url_base() normalisiert Schema auf https (verhindert doppeltes Crawlen bei Redirects), extract_pdf_text httpx.Client im Worker-Thread (kein SSL-Blocking), _safe_get() fängt alle Exceptions inkl. SSLError und RemoteProtocolError',
+    'a74b31af57b61285b923fe3637b99f37921de7fe'),
+
+('1.13.0', '2026-06-01', 'OOM-Kill-Prevention & External-Redirect-Guard',
+    'RAM-Speicherleck geschlossen (soup/resp explizit gelöscht, html_pages/pdf_pages vor LLM-Call freigegeben), resp.text einmalig in Variable (verhindert gleichzeitiges resp.content + resp.text + BeautifulSoup-DOM im RAM), Domain-Redirect-Guard: EXTERNAL_REDIRECT-Erkennung bei vestenbergsgreuth.de und ähnlichen Fällen, MAX_QUEUE=300 gegen URL-Queue-Explosion, visited_full-Trim bei >2000 Einträgen, RAM-Warn-Logger ab 400 MB RSS, _safe_get shutdown(wait=False) gegen hängende Verbindungen, psutil statt unix-only resource-Modul',
+    '05461ff1e7921caa43293faef09cd44c7c3a0a0d'),
+
+('1.14.0', '2026-06-02', 'Multi-Modell-Evaluation & JS-Crawler-Modul',
+    'Neues Modul crawler_eval/ für parallelen Modellvergleich (eval_config.py + crawler_eval.py), alle stabilen Telekom-API-Modelle ohne WARN-Präfix aktiviert, neues Modul crawler_js/ mit Playwright-Fallback für JavaScript-gerenderte Seiten (scraper_js.py + config_js.py)',
+    '95b3f865f430c83b28eac8b33b2fc7b420f052bc'),
+
+('1.15.0', '2026-06-02', 'VG-Redirect-Support & Browser-User-Agent',
+    'VG-Redirect-Erkennung (_is_vg_redirect): Verwaltungsgemeinschaft-Redirects werden akzeptiert wenn Gemeindenamen als Pfadsegment in Ziel-URL vorkommt, Subpath-Filter verhindert unkontrolliertes Crawlen aller VG-Mitgliedsgemeinden, vg_max_queue=80 reduziert Queue-Limit bei VG-Seiten, Browser-like User-Agent für httpx.Client (http_user_agent in CONFIG) behebt 503/403-Blocking durch TYPO3 und Apache',
+    '6021ab6ea2b659f71b1188f737922c5f9706801d');
 
 
 -- ============================================================
@@ -197,10 +229,106 @@ SELECT id, 'feat', 'db',      'Neue Spalte subpage_hashes JSONB in crawl_targets
 INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
 SELECT id, 'feat', 'config',  'Neuer CONFIG-Parameter chunk_overlap für einstellbaren Kontext-Überlapp',                        '4811423', 5 FROM changelog WHERE version = '1.7.0';
 
+-- v1.8.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'refactor', 'structure', 'Crawler in 6 Teilmodule aufgeteilt: config, logger, rate_limiter, scraper, llm_client, crawler_telekom (1198 → ~190 Zeilen Haupt-Loop)', 'df2db7e1', 1 FROM changelog WHERE version = '1.8.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat',     'config',    'Kategorie Tiefbau aufgeteilt in eigenständige Kategorien Straßenbau und Brückenbau',                                                     'e92d52c5', 2 FROM changelog WHERE version = '1.8.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat',     'config',    'force_ags-Liste in CONFIG: bestimmte AGS-Targets immer crawlen unabhängig vom Hash',                                                    'b007b0ec', 3 FROM changelog WHERE version = '1.8.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat',     'scraper',   'Regex-Scan für PDF-Links die BeautifulSoup übersieht (JS-gerenderte Links im Raw-HTML)',                                               'eea1ed4c', 4 FROM changelog WHERE version = '1.8.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat',     'scraper',   'URL-Kontext-Hint in assemble_text(): Quell-URL jedes Abschnitts im LLM-Eingabetext sichtbar',                                          'eea1ed4c', 5 FROM changelog WHERE version = '1.8.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',      'crawler',   'Zeitraum-Filter, Kosten-Summary und Live-Log-Keys (aktueller_ort, hash_match) wiederhergestellt',                                     '4e305766', 6 FROM changelog WHERE version = '1.8.0';
+
+-- v1.9.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'db',       'content_hash in crawl_targets verschoben für korrekte seitenweise Hash-Vergleiche',                            '4a523410', 1 FROM changelog WHERE version = '1.9.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'api',      'Neuer Endpunkt GET /api/bestandsdaten/{id} für direkte ID-Abfrage ohne Table-Scan',                          '1314a5181', 2 FROM changelog WHERE version = '1.9.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'frontend', 'loadModal() nutzt direkten API-Endpunkt statt page_size=500-Scan (Modal bei aktivem Filter)',                  '1314a5181', 3 FROM changelog WHERE version = '1.9.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'frontend', 'updateUrl() setzt Filter beim Seitenwechsel zurück (bl, status, kat, search nicht mehr geteilt)',            '1e875ec1', 4 FROM changelog WHERE version = '1.9.0';
+
+-- v1.10.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'refactor', 'structure', 'Alle Crawler-Module in crawler/-Paket verschoben',                          'b6892869', 1 FROM changelog WHERE version = '1.10.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',      'imports',   'Alle internen Importe korrigiert (crawler.-Präfix entfernt)',                '2ef61041', 2 FROM changelog WHERE version = '1.10.0';
+
+-- v1.11.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper', 'requests durch httpx ersetzt: echter DNS-Timeout-Support',                                            'c3588c31', 1 FROM changelog WHERE version = '1.11.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper', 'httpx.Client für max_redirects-Unterstützung (v1.11)',                                              'cdaee744', 2 FROM changelog WHERE version = '1.11.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper', 'max_redirects=5 gegen Redirect-Loops (v1.10)',                                                       '6962ce46', 3 FROM changelog WHERE version = '1.11.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper', 'httpx-Calls in ThreadPoolExecutor: verhindert DNS-Blocking-Kill des Prozesses (v1.12)',              '69825039', 4 FROM changelog WHERE version = '1.11.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper', 'Outer try/except um httpx.Client-Block: kein Absturz bei 502/nicht aufgelösten Hosts',              'b7d89b24', 5 FROM changelog WHERE version = '1.11.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper', '_safe_get verwendet shutdown(wait=False): kein Process-Kill bei hängenden Verbindungen',            '8747059d', 6 FROM changelog WHERE version = '1.11.0';
+
+-- v1.12.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix', 'scraper', 'get_url_base() normalisiert Schema auf https – verhindert doppeltes Crawlen bei HTTP→HTTPS-Redirects', 'a74b31af', 1 FROM changelog WHERE version = '1.12.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix', 'scraper', 'extract_pdf_text: httpx.Client im Worker-Thread erstellt (kein SSL-Blocking im Main-Thread)',        'a74b31af', 2 FROM changelog WHERE version = '1.12.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix', 'scraper', '_safe_get fängt alle Exceptions (SSLError, RemoteProtocolError) ab',                               'a74b31af', 3 FROM changelog WHERE version = '1.12.0';
+
+-- v1.13.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper',  'RAM-Speicherleck: soup und resp nach Link-Extraktion sofort gelöscht (del soup / del resp)',                       '4aed4031', 1 FROM changelog WHERE version = '1.13.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'crawler',  'html_pages + pdf_pages vor LLM-Call freigegeben (˜4 GB RAM gespart)',                                            '4aed4031', 2 FROM changelog WHERE version = '1.13.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper',  'resp.text einmalig in raw_html Variable gespeichert – verhindert gleichzeitiges content + text + DOM im RAM',    '4aef7f3b', 3 FROM changelog WHERE version = '1.13.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper',  'Domain-Redirect-Guard: EXTERNAL_REDIRECT-Erkennung nach erstem Request (vestenbergsgreuth.de-Fall)',              '1c29c4ff', 4 FROM changelog WHERE version = '1.13.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper',  'MAX_QUEUE=300: begrenzt URL-Queue gegen unkontrolliertes Anwachsen (OOM-Hauptursache)',                          '05461ff1', 5 FROM changelog WHERE version = '1.13.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper',  'visited_full-Trim bei >2000 Einträgen: Reset auf visited_base spart RAM',                                      '05461ff1', 6 FROM changelog WHERE version = '1.13.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'scraper',  'RAM-Warn-Logger: Warnung ab 400 MB RSS mit queue/visited-Größen (Debugging-Hilfe)',                            '05461ff1', 7 FROM changelog WHERE version = '1.13.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper',  'psutil ersetzt unix-only resource-Modul (plattformübergreifende RAM-Überwachung)',                            '22221f12', 8 FROM changelog WHERE version = '1.13.0';
+
+-- v1.14.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'eval',    'Neues Modul crawler_eval/ für parallelen Modellvergleich mehrerer LLMs',                              '95b3f865', 1 FROM changelog WHERE version = '1.14.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'eval',    'eval_config.py: alle stabilen Telekom-API-Modelle ohne WARN-Präfix aktiviert',                       'c336c5d3', 2 FROM changelog WHERE version = '1.14.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler', 'Neues Modul crawler_js/: Playwright-Fallback für JS-gerenderte Seiten (scraper_js.py)',             '40a00970', 3 FROM changelog WHERE version = '1.14.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler', 'config_js.py: alle JS-Rendering-Parameter konfigurierbar (js_rendering, js_min_chars, js_timeout)', '40a00970', 4 FROM changelog WHERE version = '1.14.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler', 'Playwright blockiert Bilder/Fonts/Media für schnelleres JS-Rendering (Ressourcen-Filter)',          '40a00970', 5 FROM changelog WHERE version = '1.14.0';
+
+-- v1.15.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'scraper', '_is_vg_redirect(): erkennt VG-Sammelseiten-Redirects anhand Gemeindeslug im Zielpfad',                        '8ac906b9', 1 FROM changelog WHERE version = '1.15.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'scraper', 'effective_start_path-Filter: nur Links unterhalb des Gemeinde-Subpfads werden gecrawlt',                      '8ac906b9', 2 FROM changelog WHERE version = '1.15.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'config',  'vg_max_queue=80 in CONFIG: reduziertes Queue-Limit bei VG-Redirects verhindert VG-Übercrawling',              '8ac906b9', 3 FROM changelog WHERE version = '1.15.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper', 'Browser-like User-Agent für httpx.Client (http_user_agent): behebt 503-Blocking durch TYPO3-Proxies',        '6021ab6e', 4 FROM changelog WHERE version = '1.15.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'scraper', 'Munningen (TYPO3 308-Redirect über vg-oettingen.de) wird jetzt korrekt gecrawlt',                           '6021ab6e', 5 FROM changelog WHERE version = '1.15.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'config',  'http_user_agent als zentraler CONFIG-Parameter in config_js.py',                                              '6021ab6e', 6 FROM changelog WHERE version = '1.15.0';
+
 
 -- ============================================================
 -- FERTIG
 -- Nur changelog + changelog_items befüllt.
 -- crawl_targets und crawl_results wurden NICHT angefasst.
--- Versionen: 13 (0.1.0 – 1.7.0) | Items: 43
+-- Versionen: 21 (0.1.0 – 1.15.0) | Items: 75
 -- ============================================================
