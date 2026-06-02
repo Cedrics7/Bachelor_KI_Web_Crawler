@@ -60,15 +60,24 @@ Neu (v1.20): visited_full-Trim – bei >2000 Einträgen wird visited_full auf
              zu verhindern. RAM-Warn-Logger: loggt eine Warnung wenn der
              Prozess >400 MB RSS verbraucht – zeigt queue- und visited-Größe
              für spätere Diagnose des Absturzpunkts an.
+Neu (v1.21): Cross-Platform-Fix – Unix-only `resource`-Modul durch `psutil`
+             ersetzt. RAM-Überwachung funktioniert jetzt auf Windows, Linux
+             und macOS. psutil.Process().memory_info().rss / 1024 / 1024
+             liefert den RSS-Wert in MB auf allen Plattformen.
 """
 
 import re
-import resource
 import hashlib
 import httpx
 import fitz
 import warnings
 import concurrent.futures
+try:
+    import psutil
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    _PSUTIL_AVAILABLE = False
+
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 
@@ -88,6 +97,20 @@ _MAX_QUEUE = 300
 
 # RAM-Warnschwelle in MB (v1.20)
 _RAM_WARN_MB = 400
+
+
+def _get_rss_mb() -> float:
+    """
+    Gibt den aktuellen RSS-Speicherverbrauch des Prozesses in MB zurück.
+    Funktioniert auf Windows, Linux und macOS via psutil.
+    Fällt auf 0.0 zurück wenn psutil nicht installiert ist.
+    """
+    if not _PSUTIL_AVAILABLE:
+        return 0.0
+    try:
+        return psutil.Process().memory_info().rss / 1024 / 1024
+    except Exception:
+        return 0.0
 
 
 def _safe_get(client: httpx.Client, url: str, timeout: float):
@@ -238,8 +261,8 @@ def get_subpages(start_url: str, max_pages: int):
                 visited_base.add(curr_base)
                 visited_full.add(curr)
 
-                # --- RAM-Warn-Logger (v1.20) ---
-                mem_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+                # --- RAM-Warn-Logger (v1.20 / v1.21 cross-platform) ---
+                mem_mb = _get_rss_mb()
                 if mem_mb > _RAM_WARN_MB:
                     log_event("⚠️", f"RAM-Warnung: {mem_mb:.0f} MB | "
                                     f"queue={len(to_visit)} | "
@@ -257,10 +280,6 @@ def get_subpages(start_url: str, max_pages: int):
                         continue
 
                     # --- Domain-Redirect-Guard (nur beim ersten Request) ---
-                    # Prüft ob die start_url auf eine komplett andere Domain
-                    # redirectet (z.B. Gemeinde hat nur Weiterleitungsseite).
-                    # www-Präfix wird ignoriert (vestenbergsgreuth.de ==
-                    # www.vestenbergsgreuth.de).
                     if first_request:
                         first_request = False
                         final_domain = urlparse(str(resp.url)).netloc
@@ -268,7 +287,7 @@ def get_subpages(start_url: str, max_pages: int):
                             log_event("🔀", f"EXTERNAL_REDIRECT: {base_domain} → {final_domain} – Target wird übersprungen.")
                             status_log[curr] = f"EXTERNAL_REDIRECT:{final_domain}"
                             del resp
-                            break  # gesamtes Target abbrechen
+                            break
 
                     status_log[curr] = resp.status_code
                     if str(resp.url) != curr:
@@ -292,16 +311,13 @@ def get_subpages(start_url: str, max_pages: int):
                                 pdf_collected.append((curr, text))
                             del text
                         else:
-                            # raw_html einmalig extrahieren, resp sofort freigeben
                             raw_html = resp.text
                             del resp
 
-                            # Klartext extrahieren (erstellt intern soup, gibt ihn frei)
                             page_text = extract_main_text(raw_html)
                             html_collected.append((curr, page_text))
                             del page_text
 
-                            # Links + PDF-Regex aus raw_html
                             soup = BeautifulSoup(raw_html, "html.parser")
                             bs_links = set()
                             for link in soup.find_all("a", href=True):
@@ -332,7 +348,7 @@ def get_subpages(start_url: str, max_pages: int):
                                         and is_relevant_url(nxt)
                                         and nxt_base not in visited_base
                                         and nxt not in visited_full
-                                        and len(to_visit) < _MAX_QUEUE):  # v1.19 Queue-Guard
+                                        and len(to_visit) < _MAX_QUEUE):
                                     visited_full.add(nxt)
                                     if nxt.lower().endswith(".pdf") or any(
                                             p in nxt.lower() for p in prio_keywords):
