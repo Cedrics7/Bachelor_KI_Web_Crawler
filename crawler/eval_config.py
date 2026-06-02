@@ -224,7 +224,7 @@ EVAL_CONFIG = {
 
     # Direkteingabe ohne DB:
     # [{"ort": "Hamburg", "url": "https://www.hamburg.de/infrastruktur"}]
-    "manual_targets":          [],
+    "manual_targets":          [{"ort": "Hamburg", "url": "https://www.hamburg.de"}],
 
     "max_targets":             3,
     "max_subpages":            30,

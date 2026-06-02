@@ -13,7 +13,7 @@ load_dotenv()
 CONFIG = {
     "heartbeat":               10,
     "max_log_lines":           200,
-    "max_targets":             1,
+    "max_targets":             10,
     "max_subpages":            50,
     "max_pdf_pages":           5,
     "timeout_seconds":         10,
@@ -28,7 +28,7 @@ CONFIG = {
 
     "llm_parallel_workers":    4,
     "context_window_size":     5,
-    "llm_model":               "gemini-2.5-pro",
+    "llm_model":               "claude-sonnet-4-6",
     "llm_base_url":            "https://llmapi.telekom.de/v1",
     "llm_retries":             3,
     "llm_retry_delays":        [10, 30, 60],

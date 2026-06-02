@@ -194,6 +194,7 @@ ZEITRAUM-FILTER (Stichtag heute: {today_str}):
 WICHTIG:
         - Wenn ein Text keine Baumaßnahme enthält, gib eine leere Liste zurück: {{"massnahmen": []}}
         - Jede Maßnahme MUSS ein Start- oder Enddatum haben.
+        - "massnahme_start" UND "massnahme_ende" beide extrahieren wenn beide im Text stehen.
         - "quelle_url": Gib IMMER eine vollständige absolute URL an, die mit http:// oder https:// beginnt.
           Die Basis-Domain lautet: {base_url}
           Bei mehreren URLs zur selben Maßnahme: wähle die mit dem konkretesten Inhalt.
