@@ -44,14 +44,14 @@ CONFIG = {
     "ziel_kategorien": {
         "Sanierung":     ["Sanierungsgebiet", "Stadtsanierung", "Fördergebiet"],
         "Neubau":        ["Neubaugebiet", "Bebauungsplan", "B-Plan", "Erschließung"],
-        "Privatisierung": ["Grundstücksverkauf", "Veräußerung", "Liegenschaften"],
+        "Privatisierung": ["Grundstücksverkauf", "Veräußerung", "Liegenschaften", "Entwidmung",],
         "Straßenbau":    [
             "Straßenbau", "Straßensanierung", "Fahrbahnerneuerung",
             "Kreisverkehr", "Gehweg", "Radweg", "Straßenausbau",
         ],
         "Brückenbau":    [
             "Brückenbau", "Brückensanierung", "Brückenneubau",
-            "Brückeninstandsetzung", "Unterführung",
+            "Brückeninstandsetzung", "Unterführung", "Düker",
         ],
         "Ausschreibung": [
             "Ausschreibung", "Vergabe", "Öffentliche Auftragsvergabe",

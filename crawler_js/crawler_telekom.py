@@ -8,7 +8,7 @@ Fix: content_hash wird jetzt in crawl_targets gespeichert (nicht crawl_results),
      gefunden wurden oder sich der Text minimal aendert.
 """
 
-#todo Hashing verbessern bei dynamischen Websites
+#todo Wenn in OrtA Infos zu OrtB gefunden werden, Abgleich und Schreiben OrtB
 
 import json
 import time
