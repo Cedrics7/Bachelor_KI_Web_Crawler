@@ -1,5 +1,5 @@
 """
-FastAPI Backend zur Bereitstellung der Crawler-Daten für das Frontend-Dashboard.
+FastAPI Backend zur Bereitstellung der Crawler-Daten fuer das Frontend-Dashboard.
 """
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,10 +18,6 @@ mimetypes.add_type('text/css', '.css')
 
 load_dotenv()
 app = FastAPI(title="Telekom Web Crawler API")
-
-# Absoluter Pfad zum Projektverzeichnis (dort liegt api.py)
-_BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-HISTORY_FILE = os.path.join(_BASE_DIR, "crawler_history.txt")
 
 script_dir = os.path.dirname(__file__)
 node_path = os.path.join(script_dir, "node_modules")
@@ -262,6 +258,8 @@ def get_monitoring():
     try:
         conn = get_db_connection(as_dict=True)
         cur  = conn.cursor()
+
+        # Live-Status
         cur.execute("SELECT * FROM crawler_status_view")
         row = cur.fetchone()
         if row:
@@ -277,12 +275,27 @@ def get_monitoring():
         else:
             status, current_target, timestamp = 'inaktiv', '-', '-'
             started_str = stopped_str = seconds_since = None
+
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         cur.execute(
             "SELECT COUNT(*) AS cnt FROM crawl_results WHERE gefunden_am >= %s",
             (today_start,)
         )
         funde_heute = cur.fetchone()['cnt']
+
+        # History aus DB lesen (neueste 20 Eintraege, absteigend)
+        cur.execute("""
+            SELECT created_at, event_type, message
+            FROM crawler_history
+            ORDER BY created_at DESC
+            LIMIT 20
+        """)
+        history_rows = cur.fetchall()
+        history_log = "".join(
+            f"[{r['created_at'].strftime('%d.%m.%Y, %H:%M:%S')}] {r['event_type']}: {r['message']}\n"
+            for r in history_rows
+        )
+
         conn.close()
         live_data = {
             "aktueller_ort":           current_target,
@@ -303,12 +316,7 @@ def get_monitoring():
             "stopped_at":     None,
             "seconds_since_heartbeat": None,
         }
-
-    # History aus absolutem Pfad lesen
-    history_log = ""
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            history_log = "".join(f.readlines()[-20:][::-1])
+        history_log = ""
 
     return {"live": live_data, "history": history_log}
 

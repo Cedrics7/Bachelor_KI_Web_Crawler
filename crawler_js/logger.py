@@ -1,10 +1,11 @@
 """
 logger.py
 =========
-Logging-Hilfsfunktionen: Konsole, History, Live-Status, Heartbeat.
+Logging-Hilfsfunktionen: Konsole, Live-Status, Heartbeat.
 
-Neu: _heartbeat_worker schreibt per UPSERT einen DB-Heartbeat in crawler_status.
-     Alle Dateipfade sind absolut damit sie unabhaengig vom Arbeitsverzeichnis funktionieren.
+History wird jetzt in die DB geschrieben (crawler_history Tabelle)
+statt in eine lokale Textdatei. Aeltere Eintraege werden automatisch
+geloescht sobald MAX_HISTORY_ROWS ueberschritten wird.
 """
 
 import os
@@ -17,8 +18,9 @@ from config_js import CONFIG, CONSOLE_LOG_FILE, SKIPPED_LOG_FILE
 _heartbeat_stop = threading.Event()
 
 _PROJECT_ROOT    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HISTORY_FILE     = os.path.join(_PROJECT_ROOT, "crawler_history.txt")
 LIVE_STATUS_FILE = os.path.join(_PROJECT_ROOT, "crawler_live_status.json")
+
+MAX_HISTORY_ROWS = CONFIG.get("max_log_lines", 200)
 
 
 def get_german_time() -> str:
@@ -71,19 +73,33 @@ def log_event(emoji: str, message: str):
 
 
 def write_history_log(event_type: str, message: str):
+    """Schreibt einen History-Eintrag in die DB und begrenzt auf MAX_HISTORY_ROWS."""
     zeit      = get_german_time()
-    log_entry = f"[{zeit}] {event_type.upper()}: {message}\n"
-    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-        f.write(log_entry)
-    _write_console_log(log_entry.rstrip())
+    log_entry = f"[{zeit}] {event_type.upper()}: {message}"
+    _write_console_log(log_entry)
+    print(log_entry)
     try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        if len(lines) > CONFIG["max_log_lines"]:
-            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-                f.writelines(lines[-CONFIG["max_log_lines"]:])
-    except FileNotFoundError:
-        pass
+        from database import get_db_connection
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        # Eintrag schreiben
+        cur.execute(
+            "INSERT INTO crawler_history (event_type, message) VALUES (%s, %s)",
+            (event_type.upper(), message)
+        )
+        # Alte Eintraege loeschen (behaelt nur die neuesten MAX_HISTORY_ROWS)
+        cur.execute("""
+            DELETE FROM crawler_history
+            WHERE id NOT IN (
+                SELECT id FROM crawler_history
+                ORDER BY created_at DESC
+                LIMIT %s
+            )
+        """, (MAX_HISTORY_ROWS,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[History-DB] Fehler: {e}")
 
 
 def reset_live_log_if_new_day():
@@ -125,7 +141,7 @@ def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False
 
 
 def _db_heartbeat_write():
-    """Schreibt per UPDATE einen Heartbeat in crawler_status. Zeile muss bereits existieren."""
+    """Schreibt per UPDATE einen Heartbeat in crawler_status."""
     try:
         from database import get_db_connection
         conn = get_db_connection()
