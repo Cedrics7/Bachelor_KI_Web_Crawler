@@ -3,13 +3,9 @@ logger.py
 =========
 Logging-Hilfsfunktionen: Konsole, History, Live-Status, Heartbeat.
 
-Hinweis zu update_live_log:
-  Keys im JSON entsprechen dem Original:
-    'aktueller_ort'  (nicht 'letzter_ort')
-    'hash_match'     (nicht 'gespart')
-
-Neu: _heartbeat_worker schreibt zusätzlich einen DB-Heartbeat in crawler_status,
-     damit crawler_status_view den Status nicht vorzeitig auf 'inaktiv' setzt.
+Neu: _heartbeat_worker schreibt per UPSERT einen DB-Heartbeat in crawler_status.
+     Alle Dateipfade sind absolut (relativ zu PROJECT_ROOT) damit sie unabhaengig
+     vom Arbeitsverzeichnis immer funktionieren.
 """
 
 import os
@@ -22,8 +18,8 @@ from config_js import CONFIG, CONSOLE_LOG_FILE, SKIPPED_LOG_FILE
 _heartbeat_stop = threading.Event()
 
 # Absoluter Pfad zum Projekt-Root (eine Ebene über crawler_js/)
-_PROJECT_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HISTORY_FILE    = os.path.join(_PROJECT_ROOT, "crawler_history.txt")
+_PROJECT_ROOT    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HISTORY_FILE     = os.path.join(_PROJECT_ROOT, "crawler_history.txt")
 LIVE_STATUS_FILE = os.path.join(_PROJECT_ROOT, "crawler_live_status.json")
 
 
@@ -110,10 +106,6 @@ def reset_live_log_if_new_day():
 
 
 def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False):
-    """
-    Schreibt den aktuellen Crawl-Status in crawler_live_status.json.
-    Keys identisch zum Original: 'aktueller_ort', 'hash_match'.
-    """
     heute_str          = datetime.now().strftime("%Y-%m-%d")
     gesamt_funde_heute = funde
     if os.path.exists(LIVE_STATUS_FILE):
@@ -135,16 +127,21 @@ def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False
 
 
 def _db_heartbeat_write():
-    """Schreibt einen Heartbeat in die DB-Tabelle crawler_status."""
+    """Schreibt per UPSERT einen Heartbeat in crawler_status. Legt Zeile an falls noetig."""
     try:
         from database import get_db_connection
-        conn   = get_db_connection()
-        cur    = conn.cursor()
-        cur.execute("UPDATE crawler_status SET last_heartbeat = %s", (datetime.now(),))
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO crawler_status (status, last_heartbeat)
+            VALUES ('aktiv', %s)
+            ON CONFLICT ON CONSTRAINT crawler_status_pkey
+                DO UPDATE SET last_heartbeat = EXCLUDED.last_heartbeat
+        """, (datetime.now(),))
         conn.commit()
         conn.close()
     except Exception:
-        pass  # DB-Fehler sollen den Crawler nie blockieren
+        pass
 
 
 def _heartbeat_worker():
@@ -160,7 +157,7 @@ def _heartbeat_worker():
         except Exception:
             pass
 
-        # DB-Heartbeat schreiben
+        # DB-Heartbeat
         _db_heartbeat_write()
 
         _heartbeat_stop.wait(CONFIG["heartbeat"])

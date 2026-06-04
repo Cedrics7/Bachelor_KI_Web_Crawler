@@ -4,13 +4,9 @@ crawler_telekom.py  (crawler_js)
 Haupt-Loop des Telekom-Crawlers (JS-Renderer-Variante).
 
 Fix: content_hash wird jetzt in crawl_targets gespeichert (nicht crawl_results),
-     damit der Hash-Vergleich korrekt funktioniert – auch wenn 0 Massnahmen
-     gefunden wurden oder sich der Text minimal aendert.
-Neu: Live-Status in der DB – crawler_status Tabelle erhält beim Start
-     'aktiv' + started_at, dann regelmäßige Heartbeat-Timestamps pro Target.
-     Bei normalem Ende oder unbehandeltem Fehler wird Status auf 'inaktiv' gesetzt.
-     Das Dashboard liest den Status über crawler_status_view, die den Status
-     automatisch auf 'inaktiv' setzt wenn der letzte Heartbeat zu lange her ist.
+     damit der Hash-Vergleich korrekt funktioniert.
+Neu: Live-Status per UPSERT in crawler_status – Zeile wird automatisch angelegt
+     falls die Migration noch nicht manuell ausgefuehrt wurde.
 """
 
 #todo Wenn in OrtA Infos zu OrtB gefunden werden, Abgleich und Schreiben OrtB
@@ -37,36 +33,49 @@ from database import get_db_connection
 
 def _db_set_status(cursor, status: str, current_target: str = None):
     """
-    Setzt den Crawler-Status in der DB.
-    status: 'aktiv' oder 'inaktiv'
-    Schreibt außerdem den aktuellen heartbeat_timeout_seconds-Wert aus CONFIG.
+    Setzt den Crawler-Status per UPSERT in crawler_status.
+    Legt die Zeile automatisch an falls sie nicht existiert.
     """
-    now = datetime.now()
+    now     = datetime.now()
+    timeout = CONFIG.get("heartbeat_timeout_seconds", 60)
+
     if status == 'aktiv':
         cursor.execute("""
-            UPDATE crawler_status SET
-                status                    = 'aktiv',
-                started_at                = %s,
-                stopped_at                = NULL,
-                last_heartbeat            = %s,
-                current_target            = %s,
-                heartbeat_timeout_seconds = %s
-        """, (now, now, current_target, CONFIG["heartbeat_timeout_seconds"]))
+            INSERT INTO crawler_status
+                (status, started_at, stopped_at, last_heartbeat,
+                 current_target, heartbeat_timeout_seconds)
+            VALUES ('aktiv', %s, NULL, %s, %s, %s)
+            ON CONFLICT ON CONSTRAINT crawler_status_pkey
+                DO UPDATE SET
+                    status                    = 'aktiv',
+                    started_at                = EXCLUDED.started_at,
+                    stopped_at                = NULL,
+                    last_heartbeat            = EXCLUDED.last_heartbeat,
+                    current_target            = EXCLUDED.current_target,
+                    heartbeat_timeout_seconds = EXCLUDED.heartbeat_timeout_seconds
+        """, (now, now, current_target, timeout))
     else:
         cursor.execute("""
-            UPDATE crawler_status SET
-                status         = 'inaktiv',
-                stopped_at     = %s,
-                current_target = NULL
-        """, (now,))
+            INSERT INTO crawler_status
+                (status, stopped_at, current_target, heartbeat_timeout_seconds)
+            VALUES ('inaktiv', %s, NULL, %s)
+            ON CONFLICT ON CONSTRAINT crawler_status_pkey
+                DO UPDATE SET
+                    status         = 'inaktiv',
+                    stopped_at     = EXCLUDED.stopped_at,
+                    current_target = NULL
+        """, (now, timeout))
 
 
 def _db_heartbeat(cursor, current_target: str = None):
-    """Schreibt einen Heartbeat-Timestamp + aktuelles Target in die DB."""
+    """Schreibt Heartbeat + aktuelles Target per UPSERT."""
     cursor.execute("""
-        UPDATE crawler_status SET
-            last_heartbeat = %s,
-            current_target = %s
+        INSERT INTO crawler_status (status, last_heartbeat, current_target)
+        VALUES ('aktiv', %s, %s)
+        ON CONFLICT ON CONSTRAINT crawler_status_pkey
+            DO UPDATE SET
+                last_heartbeat = EXCLUDED.last_heartbeat,
+                current_target = EXCLUDED.current_target
     """, (datetime.now(), current_target))
 
 
@@ -109,7 +118,6 @@ def _save_page_hashes(cursor, ags: str, page_hashes: dict):
 
 
 def _load_stored_content_hash(cursor, ags: str) -> str | None:
-    """Liest den gespeicherten Gesamt-Hash des letzten Crawls aus crawl_targets."""
     cursor.execute(
         "SELECT content_hash FROM crawl_targets WHERE ags = %s", (ags,)
     )
@@ -118,7 +126,6 @@ def _load_stored_content_hash(cursor, ags: str) -> str | None:
 
 
 def _save_content_hash(cursor, ags: str, content_hash: str):
-    """Speichert den Gesamt-Hash des aktuellen Crawls in crawl_targets."""
     cursor.execute(
         "UPDATE crawl_targets SET content_hash = %s WHERE ags = %s",
         (content_hash, ags)
@@ -266,7 +273,6 @@ def run_crawler():
                 if skipped_urls:
                     log_event("🔗", f"{len(skipped_urls)} URL(s) per Dedup übersprungen")
 
-                # --- Unterseiten-Hash-Filter ---
                 old_hashes = _load_stored_page_hashes(cursor, ags)
                 if old_hashes and not is_forced:
                     html_pages, pdf_pages, unchanged_count = _filter_changed_pages(
@@ -279,8 +285,6 @@ def run_crawler():
                 text_bulk, hat_gekuerzt, hat_verworfen = assemble_text(
                     ort, html_pages, pdf_pages, CONFIG["max_text_chars"]
                 )
-
-                # RAM freigeben: Rohlisten werden nach assemble_text() nicht mehr benötigt
                 del html_pages, pdf_pages
 
                 if not text_bulk.strip():
@@ -291,9 +295,8 @@ def run_crawler():
                     conn.commit()
                     continue
 
-                # --- Gesamt-Hash-Vergleich (in crawl_targets) ---
-                content_hash  = get_content_hash(text_bulk)
-                stored_hash   = _load_stored_content_hash(cursor, ags)
+                content_hash = get_content_hash(text_bulk)
+                stored_hash  = _load_stored_content_hash(cursor, ags)
 
                 log_event("🔑", f"NEU={content_hash[:8]} | ALT={str(stored_hash)[:8] if stored_hash else 'None'}")
 
@@ -344,9 +347,7 @@ def run_crawler():
                             m_start, m_ende, item.get("quelle_url"),
                         ))
 
-                    # Hash immer nach Analyse speichern – auch bei 0 Funden
                     _save_content_hash(cursor, ags, content_hash)
-
                     total_funde += valid_count
                     log_event("✅", f"Fertig: {valid_count} neue Funde, "
                                    f"{skipped_dups} Duplikate für {ort}.")
