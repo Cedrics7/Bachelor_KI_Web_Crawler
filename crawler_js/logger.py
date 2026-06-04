@@ -4,8 +4,7 @@ logger.py
 Logging-Hilfsfunktionen: Konsole, History, Live-Status, Heartbeat.
 
 Neu: _heartbeat_worker schreibt per UPSERT einen DB-Heartbeat in crawler_status.
-     Alle Dateipfade sind absolut (relativ zu PROJECT_ROOT) damit sie unabhaengig
-     vom Arbeitsverzeichnis immer funktionieren.
+     Alle Dateipfade sind absolut damit sie unabhaengig vom Arbeitsverzeichnis funktionieren.
 """
 
 import os
@@ -17,7 +16,6 @@ from config_js import CONFIG, CONSOLE_LOG_FILE, SKIPPED_LOG_FILE
 
 _heartbeat_stop = threading.Event()
 
-# Absoluter Pfad zum Projekt-Root (eine Ebene über crawler_js/)
 _PROJECT_ROOT    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HISTORY_FILE     = os.path.join(_PROJECT_ROOT, "crawler_history.txt")
 LIVE_STATUS_FILE = os.path.join(_PROJECT_ROOT, "crawler_live_status.json")
@@ -127,17 +125,15 @@ def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False
 
 
 def _db_heartbeat_write():
-    """Schreibt per UPSERT einen Heartbeat in crawler_status. Legt Zeile an falls noetig."""
+    """Schreibt per UPDATE einen Heartbeat in crawler_status. Zeile muss bereits existieren."""
     try:
         from database import get_db_connection
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("""
-            INSERT INTO crawler_status (status, last_heartbeat)
-            VALUES ('aktiv', %s)
-            ON CONFLICT ON CONSTRAINT crawler_status_pkey
-                DO UPDATE SET last_heartbeat = EXCLUDED.last_heartbeat
-        """, (datetime.now(),))
+        cur.execute(
+            "UPDATE crawler_status SET last_heartbeat = %s",
+            (datetime.now(),)
+        )
         conn.commit()
         conn.close()
     except Exception:
@@ -146,7 +142,6 @@ def _db_heartbeat_write():
 
 def _heartbeat_worker():
     while not _heartbeat_stop.is_set():
-        # JSON-Datei aktualisieren
         try:
             if os.path.exists(LIVE_STATUS_FILE):
                 with open(LIVE_STATUS_FILE, "r", encoding="utf-8") as f:
@@ -156,10 +151,7 @@ def _heartbeat_worker():
                     json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception:
             pass
-
-        # DB-Heartbeat
         _db_heartbeat_write()
-
         _heartbeat_stop.wait(CONFIG["heartbeat"])
 
 

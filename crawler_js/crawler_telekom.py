@@ -2,11 +2,6 @@
 crawler_telekom.py  (crawler_js)
 =================================
 Haupt-Loop des Telekom-Crawlers (JS-Renderer-Variante).
-
-Fix: content_hash wird jetzt in crawl_targets gespeichert (nicht crawl_results),
-     damit der Hash-Vergleich korrekt funktioniert.
-Neu: Live-Status per UPSERT in crawler_status – Zeile wird automatisch angelegt
-     falls die Migration noch nicht manuell ausgefuehrt wurde.
 """
 
 #todo Wenn in OrtA Infos zu OrtB gefunden werden, Abgleich und Schreiben OrtB
@@ -32,20 +27,15 @@ from database import get_db_connection
 # ============================================================
 
 def _db_set_status(cursor, status: str, current_target: str = None):
-    """
-    Setzt den Crawler-Status per UPSERT in crawler_status.
-    Legt die Zeile automatisch an falls sie nicht existiert.
-    """
     now     = datetime.now()
     timeout = CONFIG.get("heartbeat_timeout_seconds", 60)
-
     if status == 'aktiv':
         cursor.execute("""
             INSERT INTO crawler_status
                 (status, started_at, stopped_at, last_heartbeat,
                  current_target, heartbeat_timeout_seconds)
             VALUES ('aktiv', %s, NULL, %s, %s, %s)
-            ON CONFLICT ON CONSTRAINT crawler_status_pkey
+            ON CONFLICT (id)
                 DO UPDATE SET
                     status                    = 'aktiv',
                     started_at                = EXCLUDED.started_at,
@@ -59,7 +49,7 @@ def _db_set_status(cursor, status: str, current_target: str = None):
             INSERT INTO crawler_status
                 (status, stopped_at, current_target, heartbeat_timeout_seconds)
             VALUES ('inaktiv', %s, NULL, %s)
-            ON CONFLICT ON CONSTRAINT crawler_status_pkey
+            ON CONFLICT (id)
                 DO UPDATE SET
                     status         = 'inaktiv',
                     stopped_at     = EXCLUDED.stopped_at,
@@ -68,11 +58,10 @@ def _db_set_status(cursor, status: str, current_target: str = None):
 
 
 def _db_heartbeat(cursor, current_target: str = None):
-    """Schreibt Heartbeat + aktuelles Target per UPSERT."""
     cursor.execute("""
         INSERT INTO crawler_status (status, last_heartbeat, current_target)
         VALUES ('aktiv', %s, %s)
-        ON CONFLICT ON CONSTRAINT crawler_status_pkey
+        ON CONFLICT (id)
             DO UPDATE SET
                 last_heartbeat = EXCLUDED.last_heartbeat,
                 current_target = EXCLUDED.current_target
@@ -239,6 +228,7 @@ def run_crawler():
         log_event("🟢", "Live-Status in DB: aktiv")
     except Exception as e:
         log_event("⚠️", f"DB-Status konnte nicht gesetzt werden: {e}")
+        conn.rollback()  # Transaction-Fehler bereinigen damit der Crawler weiterlaeuft
 
     targets   = _fetch_targets(cursor)
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
@@ -259,12 +249,13 @@ def run_crawler():
                 update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
                 targets_processed += 1
 
-                # --- DB-Heartbeat: neues Target gestartet ---
+                # --- DB-Heartbeat: neues Target ---
                 try:
                     _db_heartbeat(cursor, current_target=ort)
                     conn.commit()
                 except Exception as e:
                     log_event("⚠️", f"Heartbeat fehlgeschlagen für {ort}: {e}")
+                    conn.rollback()
 
                 html_pages, pdf_pages, skipped_urls, status_log, page_hashes = get_subpages(
                     start_url, CONFIG["max_subpages"]
@@ -379,13 +370,16 @@ def run_crawler():
             f"Laufzeit: {laufzeit:.1f}s | "
             f"Gesamtkosten: {gesamtkosten:.6f} $ ({gesamtrequests} Requests)")
 
-        # --- DB-Status: Crawler beendet ---
         try:
             _db_set_status(cursor, 'inaktiv')
             conn.commit()
             log_event("🔴", "Live-Status in DB: inaktiv")
         except Exception as e:
             log_event("⚠️", f"DB-Status (inaktiv) konnte nicht gesetzt werden: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
         try:
             conn.close()
