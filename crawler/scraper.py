@@ -64,6 +64,16 @@ Neu (v1.21): Cross-Platform-Fix – Unix-only `resource`-Modul durch `psutil`
              ersetzt. RAM-Überwachung funktioniert jetzt auf Windows, Linux
              und macOS. psutil.Process().memory_info().rss / 1024 / 1024
              liefert den RSS-Wert in MB auf allen Plattformen.
+Neu (v1.22): Refactoring – Scraper-Konstanten (_MAX_REDIRECTS, _MAX_QUEUE,
+             _RAM_WARN_MB) und HTTP-Header (User-Agent, Accept-*) aus
+             scraper.py in config.py ausgelagert. Alle Werte werden nun
+             zentral über CONFIG referenziert.
+             User-Agent auf vollständigen Browser-String aktualisiert.
+Neu (v1.23): robots.txt-Support – _get_robots_parser() lädt und cached
+             die robots.txt jeder Domain via lru_cache. is_allowed_by_robots()
+             prüft vor jedem Request ob die URL gecrawlt werden darf.
+             Blockierte URLs werden als ROBOTS_DISALLOWED geloggt und
+             übersprungen – kein Netzwerk-Request wird ausgelöst.
 """
 
 import re
@@ -72,6 +82,9 @@ import httpx
 import fitz
 import warnings
 import concurrent.futures
+import urllib.robotparser
+from functools import lru_cache
+
 try:
     import psutil
     _PSUTIL_AVAILABLE = True
@@ -88,15 +101,6 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # Regex für absolute PDF-URLs im Rohtext (JS-gerenderte Links, data-Attribute, etc.)
 _PDF_URL_RE = re.compile(r'https?://[^\s"\'<>]+\.pdf', re.IGNORECASE)
-
-# Maximale Anzahl an Redirects pro Request
-_MAX_REDIRECTS = 5
-
-# Maximale Größe der to_visit-Queue (v1.19 – Queue-Guard gegen OOM)
-_MAX_QUEUE = 300
-
-# RAM-Warnschwelle in MB (v1.20)
-_RAM_WARN_MB = 400
 
 
 def _get_rss_mb() -> float:
@@ -136,6 +140,36 @@ def _safe_get(client: httpx.Client, url: str, timeout: float):
 def _strip_www(netloc: str) -> str:
     """Entfernt 'www.' Präfix für Domain-Vergleich."""
     return netloc.lower().removeprefix("www.")
+
+
+@lru_cache(maxsize=128)
+def _get_robots_parser(base_url: str) -> urllib.robotparser.RobotFileParser:
+    """
+    Lädt und cached die robots.txt einer Domain.
+    base_url: Schema + Netloc, z.B. 'https://www.beispiel.de'
+    Bei Fehler (kein robots.txt vorhanden) wird ein leerer Parser
+    zurückgegeben – d.h. alles ist erlaubt.
+    """
+    rp = urllib.robotparser.RobotFileParser()
+    robots_url = base_url.rstrip("/") + "/robots.txt"
+    rp.set_url(robots_url)
+    try:
+        rp.read()
+    except Exception:
+        pass  # Kein robots.txt = alles erlaubt
+    return rp
+
+
+def is_allowed_by_robots(url: str) -> bool:
+    """
+    Prüft ob die URL laut robots.txt des Ziel-Servers gecrawlt werden darf.
+    Verwendet den konfigurierten User-Agent aus CONFIG["http_headers"].
+    """
+    parsed = urlparse(url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+    rp = _get_robots_parser(base_url)
+    user_agent = CONFIG["http_headers"]["User-Agent"]
+    return rp.can_fetch(user_agent, url)
 
 
 def get_pdf_year(url: str) -> int:
@@ -194,7 +228,7 @@ def extract_pdf_text(url: str, max_pages: int) -> str:
         def _fetch():
             with httpx.Client(
                 follow_redirects=True,
-                max_redirects=_MAX_REDIRECTS
+                max_redirects=CONFIG["max_redirects"]
             ) as client:
                 return client.get(url, timeout=10)
 
@@ -249,8 +283,8 @@ def get_subpages(start_url: str, max_pages: int):
     try:
         with httpx.Client(
             follow_redirects=True,
-            max_redirects=_MAX_REDIRECTS,
-            headers={"User-Agent": "BachelorCrawler/1.0"}
+            max_redirects=CONFIG["max_redirects"],
+            headers=CONFIG["http_headers"]
         ) as client:
             while to_visit and (len(html_collected) + len(pdf_collected)) < max_pages:
                 curr      = to_visit.pop(0)
@@ -261,9 +295,17 @@ def get_subpages(start_url: str, max_pages: int):
                 visited_base.add(curr_base)
                 visited_full.add(curr)
 
+                # --- robots.txt-Guard (v1.23) ---
+                if not is_allowed_by_robots(curr):
+                    status_log[curr] = "ROBOTS_DISALLOWED"
+                    skipped_urls.append(curr)
+                    visited_base.discard(curr_base)
+                    visited_full.discard(curr)
+                    continue
+
                 # --- RAM-Warn-Logger (v1.20 / v1.21 cross-platform) ---
                 mem_mb = _get_rss_mb()
-                if mem_mb > _RAM_WARN_MB:
+                if mem_mb > CONFIG["ram_warn_mb"]:
                     log_event("⚠️", f"RAM-Warnung: {mem_mb:.0f} MB | "
                                     f"queue={len(to_visit)} | "
                                     f"visited={len(visited_full)} | "
@@ -348,7 +390,7 @@ def get_subpages(start_url: str, max_pages: int):
                                         and is_relevant_url(nxt)
                                         and nxt_base not in visited_base
                                         and nxt not in visited_full
-                                        and len(to_visit) < _MAX_QUEUE):
+                                        and len(to_visit) < CONFIG["max_queue"]):
                                     visited_full.add(nxt)
                                     if nxt.lower().endswith(".pdf") or any(
                                             p in nxt.lower() for p in prio_keywords):

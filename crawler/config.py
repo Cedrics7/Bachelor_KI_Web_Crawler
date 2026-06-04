@@ -37,6 +37,23 @@ CONFIG = {
     "rpd_limit":               500,
     "prio_region":             "",
 
+    # Scraper-Konstanten (ehemals hardcoded in scraper.py)
+    "max_redirects":           5,         # Maximale Anzahl an Redirects pro Request
+    "max_queue":               300,        # Maximale Größe der to_visit-Queue (Queue-Guard gegen OOM)
+    "ram_warn_mb":             400,        # RAM-Warnschwelle in MB
+
+    # HTTP-Header für alle Requests
+    "http_headers": {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+    },
+
     # Leer lassen [] für normale Crawl-Logik.
     # Beispiel: ["09162000", "05315000"]
     "force_ags":               ["09779188"],
