@@ -7,6 +7,9 @@ Hinweis zu update_live_log:
   Keys im JSON entsprechen dem Original:
     'aktueller_ort'  (nicht 'letzter_ort')
     'hash_match'     (nicht 'gespart')
+
+Neu: _heartbeat_worker schreibt zusätzlich einen DB-Heartbeat in crawler_status,
+     damit crawler_status_view den Status nicht vorzeitig auf 'inaktiv' setzt.
 """
 
 import os
@@ -17,6 +20,11 @@ from datetime import datetime
 from config_js import CONFIG, CONSOLE_LOG_FILE, SKIPPED_LOG_FILE
 
 _heartbeat_stop = threading.Event()
+
+# Absoluter Pfad zum Projekt-Root (eine Ebene über crawler_js/)
+_PROJECT_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HISTORY_FILE    = os.path.join(_PROJECT_ROOT, "crawler_history.txt")
+LIVE_STATUS_FILE = os.path.join(_PROJECT_ROOT, "crawler_live_status.json")
 
 
 def get_german_time() -> str:
@@ -69,34 +77,32 @@ def log_event(emoji: str, message: str):
 
 
 def write_history_log(event_type: str, message: str):
-    log_file = "../crawler_history.txt"
-    zeit = get_german_time()
+    zeit      = get_german_time()
     log_entry = f"[{zeit}] {event_type.upper()}: {message}\n"
-    with open(log_file, "a", encoding="utf-8") as f:
+    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
         f.write(log_entry)
     _write_console_log(log_entry.rstrip())
     try:
-        with open(log_file, "r", encoding="utf-8") as f:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             lines = f.readlines()
         if len(lines) > CONFIG["max_log_lines"]:
-            with open(log_file, "w", encoding="utf-8") as f:
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
                 f.writelines(lines[-CONFIG["max_log_lines"]:])
     except FileNotFoundError:
         pass
 
 
 def reset_live_log_if_new_day():
-    status_file = "../crawler_live_status.json"
-    heute_str   = datetime.now().strftime("%Y-%m-%d")
-    if not os.path.exists(status_file):
+    heute_str = datetime.now().strftime("%Y-%m-%d")
+    if not os.path.exists(LIVE_STATUS_FILE):
         return
     try:
-        with open(status_file, "r", encoding="utf-8") as f:
+        with open(LIVE_STATUS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not data.get("timestamp", "").startswith(heute_str):
             data["letzte_funde"] = 0
             data["timestamp"]    = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            with open(status_file, "w", encoding="utf-8") as f:
+            with open(LIVE_STATUS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
             log_event("🔄", "Neuer Tag erkannt – Livelog-Funde zurückgesetzt.")
     except Exception as e:
@@ -108,18 +114,17 @@ def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False
     Schreibt den aktuellen Crawl-Status in crawler_live_status.json.
     Keys identisch zum Original: 'aktueller_ort', 'hash_match'.
     """
-    status_file        = "../crawler_live_status.json"
     heute_str          = datetime.now().strftime("%Y-%m-%d")
     gesamt_funde_heute = funde
-    if os.path.exists(status_file):
+    if os.path.exists(LIVE_STATUS_FILE):
         try:
-            with open(status_file, "r", encoding="utf-8") as f:
+            with open(LIVE_STATUS_FILE, "r", encoding="utf-8") as f:
                 old_data = json.load(f)
             if old_data.get("timestamp", "").startswith(heute_str):
                 gesamt_funde_heute += old_data.get("letzte_funde", 0)
         except Exception:
             pass
-    with open(status_file, "w", encoding="utf-8") as f:
+    with open(LIVE_STATUS_FILE, "w", encoding="utf-8") as f:
         json.dump({
             "timestamp":     datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             "aktueller_ort": ort,
@@ -129,18 +134,35 @@ def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False
         }, f, ensure_ascii=False, indent=4)
 
 
+def _db_heartbeat_write():
+    """Schreibt einen Heartbeat in die DB-Tabelle crawler_status."""
+    try:
+        from database import get_db_connection
+        conn   = get_db_connection()
+        cur    = conn.cursor()
+        cur.execute("UPDATE crawler_status SET last_heartbeat = %s", (datetime.now(),))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # DB-Fehler sollen den Crawler nie blockieren
+
+
 def _heartbeat_worker():
-    status_file = "../crawler_live_status.json"
     while not _heartbeat_stop.is_set():
+        # JSON-Datei aktualisieren
         try:
-            if os.path.exists(status_file):
-                with open(status_file, "r", encoding="utf-8") as f:
+            if os.path.exists(LIVE_STATUS_FILE):
+                with open(LIVE_STATUS_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 data["timestamp"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-                with open(status_file, "w", encoding="utf-8") as f:
+                with open(LIVE_STATUS_FILE, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception:
             pass
+
+        # DB-Heartbeat schreiben
+        _db_heartbeat_write()
+
         _heartbeat_stop.wait(CONFIG["heartbeat"])
 
 

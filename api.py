@@ -19,6 +19,10 @@ mimetypes.add_type('text/css', '.css')
 load_dotenv()
 app = FastAPI(title="Telekom Web Crawler API")
 
+# Absoluter Pfad zum Projektverzeichnis (dort liegt api.py)
+_BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+HISTORY_FILE = os.path.join(_BASE_DIR, "crawler_history.txt")
+
 script_dir = os.path.dirname(__file__)
 node_path = os.path.join(script_dir, "node_modules")
 if os.path.exists(node_path):
@@ -255,32 +259,11 @@ def get_bestandsdaten(
 
 @app.get("/api/monitoring")
 def get_monitoring():
-    """
-    Liefert den Live-Status des Crawlers aus der DB (crawler_status_view)
-    sowie Funde heute aus crawl_results und die Crawler-History aus der Logdatei.
-
-    Response-Struktur (kompatibel mit bestehendem Frontend):
-    {
-        "live": {
-            "aktueller_ort":  str,   # current_target aus crawler_status_view
-            "status":         str,   # 'aktiv' | 'inaktiv'
-            "letzte_funde":   int,   # Funde heute aus crawl_results
-            "timestamp":      str,   # last_heartbeat als lesbarer String
-            "started_at":     str | None,
-            "stopped_at":     str | None,
-            "seconds_since_heartbeat": int | None
-        },
-        "history": str   # letzte 20 Zeilen der Logdatei (umgekehrt)
-    }
-    """
     try:
         conn = get_db_connection(as_dict=True)
         cur  = conn.cursor()
-
-        # --- Live-Status aus DB-View ---
         cur.execute("SELECT * FROM crawler_status_view")
         row = cur.fetchone()
-
         if row:
             status         = row['status']
             current_target = row['current_target'] or '-'
@@ -292,11 +275,8 @@ def get_monitoring():
             started_str    = started_at.strftime('%d.%m.%Y %H:%M:%S') if started_at else None
             stopped_str    = stopped_at.strftime('%d.%m.%Y %H:%M:%S') if stopped_at else None
         else:
-            # Tabelle existiert noch nicht oder leer (Migration noch nicht ausgeführt)
             status, current_target, timestamp = 'inaktiv', '-', '-'
             started_str = stopped_str = seconds_since = None
-
-        # --- Funde heute aus crawl_results ---
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         cur.execute(
             "SELECT COUNT(*) AS cnt FROM crawl_results WHERE gefunden_am >= %s",
@@ -304,7 +284,6 @@ def get_monitoring():
         )
         funde_heute = cur.fetchone()['cnt']
         conn.close()
-
         live_data = {
             "aktueller_ort":           current_target,
             "status":                  status,
@@ -314,9 +293,7 @@ def get_monitoring():
             "stopped_at":              stopped_str,
             "seconds_since_heartbeat": seconds_since,
         }
-
     except Exception as e:
-        # Fallback: DB nicht erreichbar – Fehlerstatus statt 500
         live_data = {
             "aktueller_ort":  "-",
             "status":         "inaktiv",
@@ -327,10 +304,10 @@ def get_monitoring():
             "seconds_since_heartbeat": None,
         }
 
-    # --- Crawler-History aus Logdatei (unveraendert) ---
+    # History aus absolutem Pfad lesen
     history_log = ""
-    if os.path.exists("crawler_history.txt"):
-        with open("crawler_history.txt", "r", encoding="utf-8") as f:
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             history_log = "".join(f.readlines()[-20:][::-1])
 
     return {"live": live_data, "history": history_log}
