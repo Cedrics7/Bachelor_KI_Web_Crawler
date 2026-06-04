@@ -27,44 +27,46 @@ from database import get_db_connection
 # ============================================================
 
 def _db_set_status(cursor, status: str, current_target: str = None):
+    """
+    Aktualisiert den Crawler-Status per UPDATE.
+    Die Zeile wird durch die Migration garantiert angelegt.
+    Falls sie fehlt, wird sie hier manuell erstellt.
+    """
     now     = datetime.now()
     timeout = CONFIG.get("heartbeat_timeout_seconds", 60)
+
+    # Zeile sicherstellen (idempotent, nur falls Migration nicht ausgefuehrt wurde)
+    cursor.execute("""
+        INSERT INTO crawler_status (status, heartbeat_timeout_seconds)
+        VALUES ('inaktiv', %s)
+        ON CONFLICT DO NOTHING
+    """, (timeout,))
+
     if status == 'aktiv':
         cursor.execute("""
-            INSERT INTO crawler_status
-                (status, started_at, stopped_at, last_heartbeat,
-                 current_target, heartbeat_timeout_seconds)
-            VALUES ('aktiv', %s, NULL, %s, %s, %s)
-            ON CONFLICT (id)
-                DO UPDATE SET
-                    status                    = 'aktiv',
-                    started_at                = EXCLUDED.started_at,
-                    stopped_at                = NULL,
-                    last_heartbeat            = EXCLUDED.last_heartbeat,
-                    current_target            = EXCLUDED.current_target,
-                    heartbeat_timeout_seconds = EXCLUDED.heartbeat_timeout_seconds
+            UPDATE crawler_status SET
+                status                    = 'aktiv',
+                started_at                = %s,
+                stopped_at                = NULL,
+                last_heartbeat            = %s,
+                current_target            = %s,
+                heartbeat_timeout_seconds = %s
         """, (now, now, current_target, timeout))
     else:
         cursor.execute("""
-            INSERT INTO crawler_status
-                (status, stopped_at, current_target, heartbeat_timeout_seconds)
-            VALUES ('inaktiv', %s, NULL, %s)
-            ON CONFLICT (id)
-                DO UPDATE SET
-                    status         = 'inaktiv',
-                    stopped_at     = EXCLUDED.stopped_at,
-                    current_target = NULL
-        """, (now, timeout))
+            UPDATE crawler_status SET
+                status         = 'inaktiv',
+                stopped_at     = %s,
+                current_target = NULL
+        """, (now,))
 
 
 def _db_heartbeat(cursor, current_target: str = None):
+    """Aktualisiert Heartbeat-Timestamp und aktuelles Ziel."""
     cursor.execute("""
-        INSERT INTO crawler_status (status, last_heartbeat, current_target)
-        VALUES ('aktiv', %s, %s)
-        ON CONFLICT (id)
-            DO UPDATE SET
-                last_heartbeat = EXCLUDED.last_heartbeat,
-                current_target = EXCLUDED.current_target
+        UPDATE crawler_status SET
+            last_heartbeat = %s,
+            current_target = %s
     """, (datetime.now(), current_target))
 
 
@@ -228,7 +230,7 @@ def run_crawler():
         log_event("🟢", "Live-Status in DB: aktiv")
     except Exception as e:
         log_event("⚠️", f"DB-Status konnte nicht gesetzt werden: {e}")
-        conn.rollback()  # Transaction-Fehler bereinigen damit der Crawler weiterlaeuft
+        conn.rollback()
 
     targets   = _fetch_targets(cursor)
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
