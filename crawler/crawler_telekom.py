@@ -6,6 +6,11 @@ Haupt-Loop des Telekom-Crawlers.
 Fix: content_hash wird jetzt in crawl_targets gespeichert (nicht crawl_results),
      damit der Hash-Vergleich korrekt funktioniert – auch wenn 0 Massnahmen
      gefunden wurden oder sich der Text minimal aendert.
+Neu: Live-Status in der DB – crawler_status Tabelle erhält beim Start
+     'aktiv' + started_at, dann regelmäßige Heartbeat-Timestamps pro Target.
+     Bei normalem Ende oder unbehandeltem Fehler wird Status auf 'inaktiv' gesetzt.
+     Das Dashboard liest den Status über crawler_status_view, die den Status
+     automatisch auf 'inaktiv' setzt wenn der letzte Heartbeat zu lange her ist.
 """
 
 #todo Hashing verbessern bei dynamischen Websites
@@ -24,6 +29,49 @@ from scraper import get_subpages, assemble_text, get_content_hash
 from llm_client import analyze_with_telekom_llm, get_session_stats
 from database import get_db_connection
 
+
+# ============================================================
+# DB Live-Status Hilfsfunktionen
+# ============================================================
+
+def _db_set_status(cursor, status: str, current_target: str = None):
+    """
+    Setzt den Crawler-Status in der DB.
+    status: 'aktiv' oder 'inaktiv'
+    Schreibt außerdem den aktuellen heartbeat_timeout_seconds-Wert aus CONFIG.
+    """
+    now = datetime.now()
+    if status == 'aktiv':
+        cursor.execute("""
+            UPDATE crawler_status SET
+                status                   = 'aktiv',
+                started_at               = %s,
+                stopped_at               = NULL,
+                last_heartbeat           = %s,
+                current_target           = %s,
+                heartbeat_timeout_seconds = %s
+        """, (now, now, current_target, CONFIG["heartbeat_timeout_seconds"]))
+    else:
+        cursor.execute("""
+            UPDATE crawler_status SET
+                status         = 'inaktiv',
+                stopped_at     = %s,
+                current_target = NULL
+        """, (now,))
+
+
+def _db_heartbeat(cursor, current_target: str = None):
+    """Schreibt einen Heartbeat-Timestamp + aktuelles Target in die DB."""
+    cursor.execute("""
+        UPDATE crawler_status SET
+            last_heartbeat = %s,
+            current_target = %s
+    """, (datetime.now(), current_target))
+
+
+# ============================================================
+# Bestehende Hilfsfunktionen
+# ============================================================
 
 def is_duplicate(cursor, ags: str, massnahme: str, massnahme_start) -> bool:
     if massnahme_start is None:
@@ -176,6 +224,14 @@ def run_crawler():
         + (f" Prio-Region: {prio_region}." if prio_region else "")
         + (f" Force-AGS: {force_ags}." if force_ags else ""))
 
+    # --- DB-Status: Crawler startet ---
+    try:
+        _db_set_status(cursor, 'aktiv')
+        conn.commit()
+        log_event("🟢", "Live-Status in DB: aktiv")
+    except Exception as e:
+        log_event("⚠️", f"DB-Status konnte nicht gesetzt werden: {e}")
+
     targets   = _fetch_targets(cursor)
     min_datum = datetime.strptime(CONFIG["min_end_datum"], "%Y-%m-%d").date()
 
@@ -194,6 +250,13 @@ def run_crawler():
                 log_event("🔍", f"Target: {ort} ({start_url}){forced_label}")
                 update_live_log(ort, "🔍 Scraping & PDF-Analyse...")
                 targets_processed += 1
+
+                # --- DB-Heartbeat: neues Target gestartet ---
+                try:
+                    _db_heartbeat(cursor, current_target=ort)
+                    conn.commit()
+                except Exception as e:
+                    log_event("⚠️", f"Heartbeat fehlgeschlagen für {ort}: {e}")
 
                 html_pages, pdf_pages, skipped_urls, status_log, page_hashes = get_subpages(
                     start_url, CONFIG["max_subpages"]
@@ -313,6 +376,15 @@ def run_crawler():
             f"Targets: {targets_processed} | Funde: {total_funde} | "
             f"Laufzeit: {laufzeit:.1f}s | "
             f"Gesamtkosten: {gesamtkosten:.6f} $ ({gesamtrequests} Requests)")
+
+        # --- DB-Status: Crawler beendet ---
+        try:
+            _db_set_status(cursor, 'inaktiv')
+            conn.commit()
+            log_event("🔴", "Live-Status in DB: inaktiv")
+        except Exception as e:
+            log_event("⚠️", f"DB-Status (inaktiv) konnte nicht gesetzt werden: {e}")
+
         try:
             conn.close()
         except Exception:

@@ -54,6 +54,11 @@ CONFIG = {
         "Accept-Encoding": "gzip, deflate, br",
     },
 
+    # Live-Status in der DB
+    # Wenn kein Heartbeat innerhalb dieses Intervalls ankommt,
+    # gilt der Crawler in crawler_status_view als 'inaktiv'.
+    "heartbeat_timeout_seconds": 60,
+
     # Leer lassen [] für normale Crawl-Logik.
     # Beispiel: ["09162000", "05315000"]
     "force_ags":               ["09779188"],
