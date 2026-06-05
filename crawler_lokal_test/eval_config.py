@@ -64,7 +64,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gemini-2.5-pro",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         "id":       "gemini-2.5-flash",
@@ -73,7 +73,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gemini-2.5-flash",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         "id":       "gemini-2.5-flash-lite",
@@ -82,7 +82,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gemini-2.5-flash-lite",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         # Neue Generation: Vergleich 2.x vs. 3.x
@@ -92,7 +92,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gemini-3.1-flash-lite",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         "id":       "gemini-3.5-flash",
@@ -101,7 +101,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gemini-3.5-flash",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
 
     # ── Gruppe B: OpenAI-Familie ───────────────────────────────────────────
@@ -112,7 +112,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gpt-4.1",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         "id":       "gpt-5.1",
@@ -121,7 +121,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gpt-5.1",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         "id":       "gpt-5-mini",
@@ -130,7 +130,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gpt-5-mini",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         "id":       "gpt-5-nano",
@@ -139,7 +139,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "gpt-5-nano",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         # Reasoning-Modell – langsamer, aber interessant für strukturierte Extraktion
@@ -149,7 +149,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "o4-mini",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
 
     # ── Gruppe C: Anthropic / Claude ──────────────────────────────────────
@@ -160,7 +160,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "claude-sonnet-4-5@20250929",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         "id":       "claude-haiku-4-5",
@@ -169,7 +169,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "claude-haiku-4-5@20251001",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
     {
         "id":       "claude-sonnet-4-6",
@@ -178,7 +178,7 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "claude-sonnet-4-6",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
 
     # ── Gruppe D: Mistral ─────────────────────────────────────────────────
@@ -189,18 +189,18 @@ EVAL_MODELS = [
         "api":      "telekom",
         "model":    "mistral-large-3",
         "base_url": "https://llmapi.telekom.de/v1",
-        "enabled":  True,
+        "enabled":  False,
     },
 
     # ── Gruppe E: Ollama lokal (optional) ─────────────────────────────────
     {
-        "id":       "mistral-local",
-        "display":  "Mistral 7B (Ollama lokal)",
+        "id":       "gemma3_4b",
+        "display":  "Gemma 3 4B (Ollama lokal)",
         "group":    "E_Lokal",
         "api":      "ollama",
-        "model":    "mistral",
+        "model":    "gemma3:4b",
         "base_url": "http://localhost:11434/v1",
-        "enabled":  False,   # auf True setzen wenn Ollama läuft
+        "enabled":  True,   # auf True setzen wenn Ollama läuft
     },
     {
         "id":       "llama3-local",
@@ -235,7 +235,7 @@ EVAL_CONFIG = {
     "min_end_datum":           str(date.today()),
 
     # Chunking
-    "chunk_size":              400_000,
+    "chunk_size":              100_000,
     "chunk_overlap":           5_000,
     "max_text_chars":          5_000_000,
 

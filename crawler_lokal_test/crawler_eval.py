@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from eval_config import EVAL_MODELS, EVAL_CONFIG, get_api_key
+from crawler_lokal_test.eval_config import EVAL_MODELS, EVAL_CONFIG, get_api_key
 from logger import log_event
 from scraper import get_subpages, assemble_text
 
