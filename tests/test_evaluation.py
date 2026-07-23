@@ -4,6 +4,10 @@ tests/test_evaluation.py
 Unit-Tests für CrawlEvaluator und EvaluationReport.
 
 Alle Tests laufen offline.
+
+Fix v1.1:
+  - add_robots_blocked() wird korrekt aufgerufen und report.total_robots_blocked geprüft
+  - EvaluationReport-Zugriff auf dataclass-Felder
 """
 
 import pytest
@@ -16,24 +20,19 @@ from focused_crawler.relevance_classifier import RelevanceClassifier, RelevanceR
 from focused_crawler.evaluation import CrawlEvaluator, EvaluationReport
 
 
-def make_result(score: float, threshold: float = 0.15) -> RelevanceResult:
-    """Erstellt ein synthetisches RelevanceResult für Tests."""
-    clf = RelevanceClassifier(domain_model=DomainModel(), relevance_threshold=threshold)
-    r = clf.classify("test")
-    # Felder direkt überschreiben für deterministische Tests
-    object.__setattr__(r, "score", score) if hasattr(r, "__dataclass_fields__") else None
-    # Fallback: manuelles Objekt
+def make_result(score: float, threshold: float = 0.15):
+    """Erstellt ein synthetisches Relevanz-Objekt für Tests."""
     class FakeResult:
         pass
     obj = FakeResult()
-    obj.score       = score
-    obj.is_relevant = score >= threshold
-    obj.tfidf_score = score * 0.5
-    obj.bayes_score = score * 0.5
-    obj.top_category = "AUSSCHREIBUNG"
-    obj.confidence   = 0.8
+    obj.score            = score
+    obj.is_relevant      = score >= threshold
+    obj.tfidf_score      = score * 0.5
+    obj.bayes_score      = score * 0.5
+    obj.top_category     = "Ausschreibung"
+    obj.confidence       = 0.8
     obj.matched_keywords = ["ausschreibung"]
-    obj.url = "https://muster.de/test"
+    obj.url              = "https://muster.de/test"
     return obj
 
 
@@ -66,9 +65,17 @@ class TestCrawlEvaluator:
         assert r.total_relevant == 0
 
     def test_add_robots_blocked(self):
-        self.ev.add_robots_blocked()
-        r = self.ev.get_report()
-        assert r.total_robots_blocked == 1
+        """
+        add_robots_blocked() zählt blockierte URLs.
+        Der Evaluator muss danach total_robots_blocked == 1 liefern.
+        """
+        ev = CrawlEvaluator(start_url="https://muster.de")
+        ev.add_robots_blocked()
+        r = ev.get_report()
+        assert r.total_robots_blocked == 1, (
+            f"Erwartet total_robots_blocked=1, erhalten={r.total_robots_blocked}. "
+            f"Prüfe ob add_robots_blocked() den Counter korrekt erhöht."
+        )
 
     # ------------------------------------------------------------------
     # Harvest Rate

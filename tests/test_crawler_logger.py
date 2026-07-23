@@ -3,13 +3,14 @@ tests/test_crawler_logger.py
 =============================
 Unit-Tests für CrawlerLogger – alle 4 Log-Kanäle.
 
-Verwendet temporäre Verzeichnisse, kein Netzwerk nötig.
+Fix v1.1:
+  - CSV-Header-Test liest Datei erst NACH dem logger.close() (damit Flush garantiert)
+  - Alternativ: eigene Logger-Instanz pro Test, die vor dem Read geschlossen wird
 """
 
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -18,15 +19,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from focused_crawler.crawler_logger import CrawlerLogger
 
 
+def make_logger(tmp_path, run_id="test_run"):
+    """Hilfsfunktion: Erstellt Logger mit tmp_path und stillem Console-Level."""
+    return CrawlerLogger(
+        run_id=run_id,
+        log_dir=str(tmp_path),
+        console_level="ERROR",
+        use_color=False,
+    )
+
+
 @pytest.fixture
 def tmp_logger(tmp_path):
     """Logger mit temporärem Log-Verzeichnis."""
-    logger = CrawlerLogger(
-        run_id="test_run",
-        log_dir=str(tmp_path),
-        console_level="ERROR",  # Konsole still für Tests
-        use_color=False,
-    )
+    logger = make_logger(tmp_path)
     yield logger, tmp_path
     logger.close()
 
@@ -64,13 +70,22 @@ class TestCrawlerLogger:
         assert len(eval_logs) == 1
 
     # ------------------------------------------------------------------
-    # Relevanz-Log
+    # Relevanz-Log (CSV)
     # ------------------------------------------------------------------
 
-    def test_relevance_csv_has_header(self, tmp_logger):
-        logger, tmp_path = tmp_logger
-        rel_file = next(f for f in tmp_path.iterdir() if "relevance" in f.name)
-        header = rel_file.read_text(encoding="utf-8").splitlines()[0]
+    def test_relevance_csv_has_header(self, tmp_path):
+        """
+        CSV-Header-Test: Logger wird explizit geschlossen (flush garantiert),
+        dann wird die Datei gelesen.
+        """
+        logger = make_logger(tmp_path, run_id="header_test")
+        logger.close()  # flush + close VOR dem Lesen
+
+        rel_files = [f for f in tmp_path.iterdir() if "relevance" in f.name]
+        assert len(rel_files) == 1, f"Keine relevance-Datei gefunden in {list(tmp_path.iterdir())}"
+        lines = rel_files[0].read_text(encoding="utf-8").splitlines()
+        assert len(lines) >= 1, "CSV-Datei ist leer"
+        header = lines[0]
         assert "score" in header
         assert "url" in header
         assert "is_relevant" in header
@@ -83,15 +98,16 @@ class TestCrawlerLogger:
             tfidf_score=0.60,
             bayes_score=0.85,
             is_relevant=True,
-            top_category="AUSSCHREIBUNG",
+            top_category="Ausschreibung",
             confidence=0.90,
             matched_keywords=["ausschreibung", "vergabe"],
         )
+        logger.close()  # Sicherstellen, dass alles geflusht ist
         rel_file = next(f for f in tmp_path.iterdir() if "relevance" in f.name)
         lines = rel_file.read_text(encoding="utf-8").strip().splitlines()
-        assert len(lines) == 2  # Header + 1 Datenzeile
+        assert len(lines) == 2, f"Erwartet 2 Zeilen (Header + 1 Daten), erhalten {len(lines)}"
         assert "0.75" in lines[1]
-        assert "AUSSCHREIBUNG" in lines[1]
+        assert "Ausschreibung" in lines[1]
 
     # ------------------------------------------------------------------
     # Privacy-Log (AUDIT-Level)
@@ -105,17 +121,19 @@ class TestCrawlerLogger:
             details="2x E-Mail",
             counts={"email": 2, "phone": 0, "iban": 0},
         )
+        logger.close()
         priv_file = next(f for f in tmp_path.iterdir() if "privacy" in f.name)
         content = priv_file.read_text(encoding="utf-8").strip()
-        assert content  # Nicht leer
+        assert content
         entry = json.loads(content.splitlines()[0])
         assert entry["event"] == "PII_REMOVED"
         assert entry["url"] == "https://muster.de/kontakt"
 
-    def test_privacy_audit_always_written(self, tmp_logger):
+    def test_privacy_audit_always_written(self, tmp_path):
         """AUDIT-Events müssen auch bei console_level=ERROR in privacy.log erscheinen."""
-        logger, tmp_path = tmp_logger
+        logger = make_logger(tmp_path, run_id="audit_test")
         logger.privacy("https://muster.de", "ROBOTS_DISALLOWED", "Disallow: /")
+        logger.close()
         priv_file = next(f for f in tmp_path.iterdir() if "privacy" in f.name)
         assert priv_file.read_text(encoding="utf-8").strip()
 
@@ -123,8 +141,8 @@ class TestCrawlerLogger:
     # Evaluation-Log
     # ------------------------------------------------------------------
 
-    def test_evaluation_log_writes_json(self, tmp_logger):
-        logger, tmp_path = tmp_logger
+    def test_evaluation_log_writes_json(self, tmp_path):
+        logger = make_logger(tmp_path, run_id="eval_test")
         report = {
             "harvest_rate": 0.65,
             "recall": 0.54,
@@ -134,6 +152,7 @@ class TestCrawlerLogger:
             "improvement_vs_baseline": 103.1,
         }
         logger.evaluation(report, label="FOCUSED")
+        logger.close()
         eval_file = next(f for f in tmp_path.iterdir() if "evaluation" in f.name)
         content = eval_file.read_text(encoding="utf-8").strip()
         data = json.loads(content)
@@ -144,19 +163,20 @@ class TestCrawlerLogger:
     # Vollprotokoll (JSON-Lines)
     # ------------------------------------------------------------------
 
-    def test_main_log_valid_jsonlines(self, tmp_logger):
-        logger, tmp_path = tmp_logger
+    def test_main_log_valid_jsonlines(self, tmp_path):
+        logger = make_logger(tmp_path, run_id="jsonlines_test")
         logger.info("CRAWL", "Testmeldung", url="https://muster.de", status=200)
+        logger.close()
         main_file = next(f for f in tmp_path.iterdir() if "focused_crawler" in f.name)
         for line in main_file.read_text(encoding="utf-8").strip().splitlines():
-            entry = json.loads(line)  # Darf nicht werfen
+            entry = json.loads(line)
             assert "ts" in entry
             assert "level" in entry
             assert "component" in entry
 
     def test_close_no_exception(self, tmp_path):
         """close() darf nicht crashen."""
-        logger = CrawlerLogger(run_id="close_test", log_dir=str(tmp_path), use_color=False)
+        logger = make_logger(tmp_path, run_id="close_test")
         try:
             logger.close()
         except Exception as e:
