@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "focused-crawler"
+version = "0.1.0"
+description = "Eigenständiger Focused Crawler für Infrastruktur-Ausbauprojekte (Bachelor-Thesis)"
+requires-python = ">=3.10"
+readme = "focused_crawler/README.md"
+license = { text = "MIT" }
+
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+]
+
+[project.scripts]
+# Nach `pip install -e .` direkt aufrufbar:
+# focused-crawler --seed https://musterstadt.de --depth 2 --use-js
+focused-crawler = "focused_crawler.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["focused_crawler*"]
