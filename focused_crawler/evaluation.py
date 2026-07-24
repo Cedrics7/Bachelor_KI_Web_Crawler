@@ -176,7 +176,25 @@ class CrawlEvaluator:
         """Berechnet und gibt den vollständigen Evaluationsbericht zurück."""
         total = len(self._results)
         if total == 0:
-            return EvaluationReport(start_url=self._start_url)
+            return EvaluationReport(
+                total_crawled=0,
+                total_relevant=0,
+                total_irrelevant=0,
+                total_skipped=self._skipped,
+                total_robots_blocked=self._robots_blocked,
+                total_pdfs=self._pdfs,
+                harvest_rate=0.0,
+                irrelevance_ratio=0.0,
+                recall=0.0,
+                f1_score=0.0,
+                avg_relevance_score=0.0,
+                baseline_harvest_rate=0.0,
+                improvement_vs_baseline=0.0,
+                category_distribution={},
+                start_url=self._start_url,
+                crawl_start=self._start_time,
+                crawl_end=datetime.now().isoformat(),
+            )
 
         relevant_results = [r for r in self._results if r.is_relevant]
         n_relevant = len(relevant_results)

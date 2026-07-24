@@ -70,7 +70,7 @@ DEFAULT_CONFIG: Dict = {
 
 _RE_EMAIL = re.compile(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}')
 _RE_PHONE = re.compile(r'(?:(?:\+49|0049|0)[\s\-.]?)(?:\(?\d{2,5}\)?[\s\-.]?)?\d{3,}[\s\-.]?\d{3,}(?:[\s\-.]?\d{1,4})?')
-_RE_IBAN  = re.compile(r'\b[A-Z]{2}\d{2}(?:\s?\d{4}){4,7}\b')
+_RE_IBAN = re.compile(r'\b[A-Z]{2}\d{2}[0-9A-Z]{11,30}\b')
 
 
 @dataclass
@@ -462,13 +462,15 @@ class FocusedCrawler:
 
     @staticmethod
     def _filter_pii_with_counts(text: str) -> Tuple[str, Dict[str, int]]:
-        """PII-Filter mit Zähler für Logging."""
         email_count = len(_RE_EMAIL.findall(text))
         text = _RE_EMAIL.sub("[E-MAIL ENTFERNT]", text)
-        phone_count = len(_RE_PHONE.findall(text))
-        text = _RE_PHONE.sub("[TEL ENTFERNT]", text)
+
         iban_count = len(_RE_IBAN.findall(text))
         text = _RE_IBAN.sub("[IBAN ENTFERNT]", text)
+
+        phone_count = len(_RE_PHONE.findall(text))
+        text = _RE_PHONE.sub("[TEL ENTFERNT]", text)
+
         return text, {"email": email_count, "phone": phone_count, "iban": iban_count}
 
     @staticmethod
