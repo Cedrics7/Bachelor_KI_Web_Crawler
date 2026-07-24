@@ -16,11 +16,20 @@ dependencies = [
     "lxml>=5.0",
 ]
 
+[project.optional-dependencies]
+# JS-Rendering via Playwright:
+js = ["playwright>=1.44"]
+# FastAPI-Betrieb:
+api = ["fastapi>=0.111", "uvicorn[standard]>=0.29", "sqlalchemy>=2.0", "pydantic>=2.0"]
+
 [project.scripts]
 # Nach `pip install -e .` direkt aufrufbar:
 # focused-crawler --seed https://musterstadt.de --depth 2 --use-js
 focused-crawler = "focused_crawler.__main__:main"
+# Einzelseiten-Renderer:
+# render-url --url https://...
+render-url = "crawler_js.render_url:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["focused_crawler*"]
+include = ["focused_crawler*", "crawler_js*"]
