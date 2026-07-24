@@ -5,9 +5,15 @@ Haupt-Loop des Bachelor-Crawlers.
 Startet per: python crawler_bachelor.py
 Holt URLs aus der DB (crawl_targets), crawlt und schreibt Ergebnisse zurück.
 Analog zu crawler_js/crawler_telekom.py.
+
+Changelog:
+    v1.1 – Fehler-Tracking: DNS_TIMEOUT / 404 / sonstige Fehler werden
+           in crawl_targets.crawl_error_code + crawl_error_count gespeichert.
+           Session-Zusammenfassung am Ende (Erfolge / Fehler / Laufzeit).
 """
 
 import time
+from collections import Counter
 from datetime import datetime
 
 from config_bachelor import CONFIG
@@ -57,6 +63,50 @@ def _fetch_targets(cursor) -> list:
     return forced_rows + normal_rows
 
 
+def _dominant_error(status_log: dict) -> str:
+    """Gibt den häufigsten Fehler-Code aus status_log zurück."""
+    if not status_log:
+        return "UNKNOWN"
+    counts = Counter(str(v) for v in status_log.values())
+    return counts.most_common(1)[0][0]
+
+
+def _update_error(cursor, ags: str, error_code: str):
+    """
+    Schreibt Fehler-Code und erhöht crawl_error_count in crawl_targets.
+    Spalten werden per ALTER TABLE angelegt falls nicht vorhanden (idempotent).
+    """
+    try:
+        cursor.execute("""
+            ALTER TABLE crawl_targets
+                ADD COLUMN IF NOT EXISTS crawl_error_code  TEXT,
+                ADD COLUMN IF NOT EXISTS crawl_error_count INT DEFAULT 0
+        """)
+    except Exception:
+        pass  # Spalten existieren bereits
+
+    cursor.execute("""
+        UPDATE crawl_targets SET
+            last_scanned      = %s,
+            crawl_error_code  = %s,
+            crawl_error_count = COALESCE(crawl_error_count, 0) + 1
+        WHERE ags = %s
+    """, (datetime.now(), error_code, ags))
+
+
+def _clear_error(cursor, ags: str):
+    """Setzt Fehler-Counter zurück, wenn ein Target erfolgreich gecrawlt wurde."""
+    try:
+        cursor.execute("""
+            UPDATE crawl_targets SET
+                crawl_error_code  = NULL,
+                crawl_error_count = 0
+            WHERE ags = %s
+        """, (ags,))
+    except Exception:
+        pass
+
+
 # ============================================================
 # Haupt-Loop
 # ============================================================
@@ -67,6 +117,9 @@ def run_crawler():
 
     targets           = _fetch_targets(cursor)
     targets_processed = 0
+    total_success     = 0
+    total_fehler      = 0
+    fehler_counter    = Counter()
     start_zeit        = datetime.now()
 
     print(f"▶ Bachelor-Crawler gestartet | {len(targets)} Targets | "
@@ -97,11 +150,11 @@ def run_crawler():
 
                 if not text_bulk.strip():
                     fehler_codes = set(status_log.values())
+                    error_code   = _dominant_error(status_log)
                     print(f"⚠️  Kein Text für {ort}. Status-Codes: {sorted(fehler_codes, key=str)}")
-                    cursor.execute(
-                        "UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
-                        (datetime.now(), ags)
-                    )
+                    total_fehler += 1
+                    fehler_counter[error_code] += 1
+                    _update_error(cursor, ags, error_code)
                     conn.commit()
                     continue
 
@@ -111,20 +164,25 @@ def run_crawler():
                 # for item in found:
                 #     cursor.execute("INSERT INTO crawl_results ...", (...))
 
+                laufzeit_target = (datetime.now() - start_time).total_seconds()
                 print(f"✅ Scraping fertig: {ort} | "
                       f"{len(text_bulk):,} Zeichen | "
-                      f"Laufzeit: {(datetime.now()-start_time).total_seconds():.1f}s")
+                      f"Laufzeit: {laufzeit_target:.1f}s")
+                total_success += 1
 
-                # --- last_scanned updaten ---
+                # --- last_scanned updaten + Fehler-Counter zurücksetzen ---
                 cursor.execute(
                     "UPDATE crawl_targets SET last_scanned = %s WHERE ags = %s",
                     (datetime.now(), ags)
                 )
+                _clear_error(cursor, ags)
                 conn.commit()
                 time.sleep(CONFIG.get("sleep_between_targets", 1))
 
             except Exception as e:
                 print(f"❌ Fehler bei {ort} ({start_url}): {e}")
+                total_fehler += 1
+                fehler_counter["EXCEPTION"] += 1
                 try:
                     conn.rollback()
                 except Exception:
@@ -132,9 +190,19 @@ def run_crawler():
                 continue
 
     finally:
-        laufzeit = (datetime.now() - start_zeit).total_seconds()
-        print(f"\n🏁 Bachelor-Crawler beendet | "
-              f"Targets: {targets_processed} | Laufzeit: {laufzeit:.1f}s")
+        laufzeit_gesamt = (datetime.now() - start_zeit).total_seconds()
+
+        print(f"\n{'='*60}")
+        print(f"🏁 Bachelor-Crawler beendet")
+        print(f"   Targets gesamt : {targets_processed}")
+        print(f"   ✅ Erfolge      : {total_success}")
+        print(f"   ⚠️  Fehler       : {total_fehler}")
+        if fehler_counter:
+            for code, count in fehler_counter.most_common():
+                print(f"      └─ {code}: {count}x")
+        print(f"   ⏱  Laufzeit     : {laufzeit_gesamt:.1f}s")
+        print(f"{'='*60}")
+
         try:
             conn.close()
         except Exception:
