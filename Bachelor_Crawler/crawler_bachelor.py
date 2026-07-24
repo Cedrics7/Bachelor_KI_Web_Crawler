@@ -10,11 +10,16 @@ Changelog:
     v1.1 – Fehler-Tracking: DNS_TIMEOUT / 404 / sonstige Fehler werden
            in crawl_targets.crawl_error_code + crawl_error_count gespeichert.
            Session-Zusammenfassung am Ende (Erfolge / Fehler / Laufzeit).
+    v1.2 – EXTERNAL_REDIRECT: Neue Ziel-URL wird automatisch in crawl_targets
+           zurückgeschrieben (url_redirect), damit nächster Lauf direkt crawlt.
+           SSL KeyboardInterrupt-Crash (Windows/httpx): wird als EXCEPTION
+           abgefangen statt den gesamten Crawler zu beenden.
 """
 
 import time
 from collections import Counter
 from datetime import datetime
+from urllib.parse import urlparse
 
 from config_bachelor import CONFIG
 from database import get_db_connection
@@ -29,15 +34,26 @@ def _fetch_targets(cursor) -> list:
     """
     Lädt die nächsten Targets aus crawl_targets.
     Sortierung: älteste last_scanned zuerst (NULLS FIRST = noch nie gecrawlt).
+    Nutzt url_redirect falls vorhanden (nach vorangegangenem Redirect-Fix).
     """
     max_targets = CONFIG.get("max_targets", 50)
     force_ags   = CONFIG.get("force_ags") or []
+
+    # Sicherstellen dass url_redirect-Spalte existiert
+    try:
+        cursor.execute("""
+            ALTER TABLE crawl_targets
+                ADD COLUMN IF NOT EXISTS url_redirect TEXT
+        """)
+    except Exception:
+        pass
 
     forced_rows = []
     if force_ags:
         placeholders = ",".join(["%s"] * len(force_ags))
         cursor.execute(
-            f"SELECT ags, url, ort FROM crawl_targets WHERE ags IN ({placeholders})",
+            f"SELECT ags, COALESCE(url_redirect, url) AS url, ort "
+            f"FROM crawl_targets WHERE ags IN ({placeholders})",
             tuple(force_ags)
         )
         forced_rows = cursor.fetchall()
@@ -47,14 +63,16 @@ def _fetch_targets(cursor) -> list:
     if exclude:
         placeholders = ",".join(["%s"] * len(exclude))
         cursor.execute(
-            f"SELECT ags, url, ort FROM crawl_targets "
+            f"SELECT ags, COALESCE(url_redirect, url) AS url, ort "
+            f"FROM crawl_targets "
             f"WHERE ags NOT IN ({placeholders}) "
             f"ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
             (*exclude, max_targets)
         )
     else:
         cursor.execute(
-            "SELECT ags, url, ort FROM crawl_targets "
+            "SELECT ags, COALESCE(url_redirect, url) AS url, ort "
+            "FROM crawl_targets "
             "ORDER BY last_scanned ASC NULLS FIRST LIMIT %s",
             (max_targets,)
         )
@@ -71,6 +89,33 @@ def _dominant_error(status_log: dict) -> str:
     return counts.most_common(1)[0][0]
 
 
+def _extract_redirect_url(error_code: str) -> str | None:
+    """
+    Aus 'EXTERNAL_REDIRECT:www.neue-domain.de' die Ziel-Domain extrahieren
+    und als vollständige URL zurückgeben.
+    """
+    if not error_code.startswith("EXTERNAL_REDIRECT:"):
+        return None
+    new_domain = error_code.split(":", 1)[1]
+    # Schema ergänzen falls fehlt
+    if not new_domain.startswith("http"):
+        new_domain = "https://" + new_domain
+    return new_domain
+
+
+def _update_redirect_url(cursor, ags: str, new_url: str):
+    """Speichert die neue URL nach einem EXTERNAL_REDIRECT in url_redirect."""
+    cursor.execute("""
+        UPDATE crawl_targets SET
+            url_redirect      = %s,
+            crawl_error_code  = 'EXTERNAL_REDIRECT',
+            crawl_error_count = COALESCE(crawl_error_count, 0) + 1,
+            last_scanned      = %s
+        WHERE ags = %s
+    """, (new_url, datetime.now(), ags))
+    print(f"🔄 URL-Redirect gespeichert: {new_url}")
+
+
 def _update_error(cursor, ags: str, error_code: str):
     """
     Schreibt Fehler-Code und erhöht crawl_error_count in crawl_targets.
@@ -83,7 +128,7 @@ def _update_error(cursor, ags: str, error_code: str):
                 ADD COLUMN IF NOT EXISTS crawl_error_count INT DEFAULT 0
         """)
     except Exception:
-        pass  # Spalten existieren bereits
+        pass
 
     cursor.execute("""
         UPDATE crawl_targets SET
@@ -119,6 +164,7 @@ def run_crawler():
     targets_processed = 0
     total_success     = 0
     total_fehler      = 0
+    total_redirects   = 0
     fehler_counter    = Counter()
     start_zeit        = datetime.now()
 
@@ -152,9 +198,17 @@ def run_crawler():
                     fehler_codes = set(status_log.values())
                     error_code   = _dominant_error(status_log)
                     print(f"⚠️  Kein Text für {ort}. Status-Codes: {sorted(fehler_codes, key=str)}")
-                    total_fehler += 1
-                    fehler_counter[error_code] += 1
-                    _update_error(cursor, ags, error_code)
+
+                    # --- EXTERNAL_REDIRECT: neue URL in DB speichern ---
+                    redirect_url = _extract_redirect_url(error_code)
+                    if redirect_url:
+                        total_redirects += 1
+                        _update_redirect_url(cursor, ags, redirect_url)
+                    else:
+                        total_fehler += 1
+                        fehler_counter[error_code] += 1
+                        _update_error(cursor, ags, error_code)
+
                     conn.commit()
                     continue
 
@@ -179,28 +233,39 @@ def run_crawler():
                 conn.commit()
                 time.sleep(CONFIG.get("sleep_between_targets", 1))
 
+            except (KeyboardInterrupt, SystemExit):
+                # Sauberes Beenden bei Ctrl+C
+                print(f"\n⏹️  Crawler durch Nutzer gestoppt bei {ort}.")
+                raise
+
             except Exception as e:
-                print(f"❌ Fehler bei {ort} ({start_url}): {e}")
+                err_str = str(e)[:120]
+                print(f"❌ Fehler bei {ort} ({start_url}): {err_str}")
                 total_fehler += 1
                 fehler_counter["EXCEPTION"] += 1
                 try:
-                    conn.rollback()
+                    _update_error(cursor, ags, f"EXCEPTION: {err_str[:60]}")
+                    conn.commit()
                 except Exception:
-                    pass
+                    conn.rollback()
                 continue
+
+    except (KeyboardInterrupt, SystemExit):
+        pass  # Sauberes Exit, finally läuft durch
 
     finally:
         laufzeit_gesamt = (datetime.now() - start_zeit).total_seconds()
 
         print(f"\n{'='*60}")
         print(f"🏁 Bachelor-Crawler beendet")
-        print(f"   Targets gesamt : {targets_processed}")
-        print(f"   ✅ Erfolge      : {total_success}")
-        print(f"   ⚠️  Fehler       : {total_fehler}")
+        print(f"   Targets gesamt  : {targets_processed}")
+        print(f"   ✅ Erfolge       : {total_success}")
+        print(f"   🔄 Redirects      : {total_redirects} (URL in DB aktualisiert)")
+        print(f"   ⚠️  Fehler        : {total_fehler}")
         if fehler_counter:
             for code, count in fehler_counter.most_common():
                 print(f"      └─ {code}: {count}x")
-        print(f"   ⏱  Laufzeit     : {laufzeit_gesamt:.1f}s")
+        print(f"   ⏱  Laufzeit      : {laufzeit_gesamt:.1f}s")
         print(f"{'='*60}")
 
         try:
