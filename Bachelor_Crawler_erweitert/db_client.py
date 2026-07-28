@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Basis-Tabelle (abwärtskompatibel, ohne neue Spalten)
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS crawl_results (
     id              SERIAL PRIMARY KEY,
@@ -23,8 +24,6 @@ CREATE TABLE IF NOT EXISTS crawl_results (
     http_status     INTEGER     NOT NULL DEFAULT 200,
     relevance_score REAL,
     relevance_label TEXT,
-    top_category    TEXT,
-    confidence      REAL,
     fetch_time_ms   REAL,
     text_snippet    TEXT,
     blocks_json     TEXT,
@@ -42,8 +41,6 @@ CREATE TABLE IF NOT EXISTS crawl_results (
     http_status     INTEGER     NOT NULL DEFAULT 200,
     relevance_score REAL,
     relevance_label TEXT,
-    top_category    TEXT,
-    confidence      REAL,
     fetch_time_ms   REAL,
     text_snippet    TEXT,
     blocks_json     TEXT,
@@ -51,11 +48,18 @@ CREATE TABLE IF NOT EXISTS crawl_results (
 );
 """
 
+# Spalten die ggf. fehlen können (Migration)
+_MIGRATION_COLUMNS = [
+    ('top_category', 'TEXT'),
+    ('confidence',   'REAL'),
+]
+
 
 class DBClient:
     """
     Leichtgewichtiger DB-Client ohne ORM-Abhängigkeit.
     Erkennt automatisch SQLite vs. PostgreSQL anhand der DATABASE_URL.
+    Führt automatisch eine Spaltenmigration durch falls die Tabelle bereits existiert.
     """
 
     def __init__(self, db_url: str) -> None:
@@ -63,6 +67,7 @@ class DBClient:
         self._is_sqlite = db_url.startswith('sqlite')
         self._conn = None
         self._connect()
+        self._migrate()
 
     def _connect(self) -> None:
         if self._is_sqlite:
@@ -86,6 +91,33 @@ class DBClient:
                 logger.error('DB: psycopg2 nicht installiert - pip install psycopg2-binary')
                 raise
 
+    def _migrate(self) -> None:
+        """
+        Fügt fehlende Spalten per ALTER TABLE nach (idempotent).
+        Wird bei jedem Start ausgeführt - bereits vorhandene Spalten werden übersprungen.
+        """
+        for col_name, col_type in _MIGRATION_COLUMNS:
+            try:
+                if self._is_sqlite:
+                    self._conn.execute(
+                        f'ALTER TABLE crawl_results ADD COLUMN {col_name} {col_type};'
+                    )
+                    self._conn.commit()
+                    logger.info('DB Migration: Spalte "%s" hinzugefügt', col_name)
+                else:
+                    with self._conn.cursor() as cur:
+                        cur.execute(
+                            f'ALTER TABLE crawl_results ADD COLUMN IF NOT EXISTS {col_name} {col_type};'
+                        )
+                    self._conn.commit()
+                    logger.info('DB Migration: Spalte "%s" geprüft/hinzugefügt', col_name)
+            except Exception as e:
+                # SQLite wirft einen Fehler wenn Spalte bereits existiert -> ignorieren
+                if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+                    logger.debug('DB Migration: Spalte "%s" bereits vorhanden', col_name)
+                else:
+                    logger.warning('DB Migration Fehler bei "%s": %s', col_name, e)
+
     def close(self) -> None:
         if self._conn:
             self._conn.close()
@@ -93,12 +125,11 @@ class DBClient:
     def save_result(self, run_id: str, result: 'CrawlResult') -> None:
         """
         Speichert ein CrawlResult in der Datenbank.
-        RelevanceResult-Attribute: score, is_relevant, top_category, confidence, matched_keywords
+        RelevanceResult-Attribute: score, is_relevant, top_category, confidence
         """
         snippet = (result.text or '')[:2000]
         blocks_json = json.dumps(result.blocks or [], ensure_ascii=False)
 
-        # Korrekte Attribute aus RelevanceResult
         rel = result.relevance
         score = rel.score if rel else None
         relevance_label = ('relevant' if rel.is_relevant else 'nicht relevant') if rel else None
