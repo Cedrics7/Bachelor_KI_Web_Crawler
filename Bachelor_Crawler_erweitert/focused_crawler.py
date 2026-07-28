@@ -31,7 +31,6 @@ try:
 except ImportError:
     _PSUTIL = False
 
-# Bild- und Medien-Erweiterungen die nicht gecrawlt werden sollen
 _SKIP_EXTENSIONS = {
     '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico',
     '.mp4', '.mp3', '.avi', '.mov', '.wmv',
@@ -41,12 +40,10 @@ _SKIP_EXTENSIONS = {
     '.xls', '.xlsx', '.doc', '.docx', '.ppt', '.pptx',
 }
 
-# Regex zum Finden von PDF-URLs im Rohtext
 _PDF_URL_RE = re.compile(r'https?://[^\s"<>]+\.pdf', re.IGNORECASE)
 
 
 def _is_skip_url(url: str) -> bool:
-    """True wenn die URL eine Bild- oder Medien-Datei ist die übersprungen werden soll."""
     path = urlparse(url).path.lower()
     return any(path.endswith(ext) for ext in _SKIP_EXTENSIONS)
 
@@ -81,9 +78,7 @@ class FocusedCrawler:
         )
         self._privacy = PrivacyGuard()
         self._robots = (
-            RobotsChecker(
-                self._config['user_agent'], self._config['robots_timeout']
-            )
+            RobotsChecker(self._config['user_agent'], self._config['robots_timeout'])
             if self._config.get('robots_respect', True)
             else None
         )
@@ -107,7 +102,11 @@ class FocusedCrawler:
 
         self._db: Optional[DBClient] = None
         if self._config.get('db_enabled'):
-            self._db = DBClient(db_url=self._config.get('db_url', 'sqlite:///./bachelor_crawler.db'))
+            self._db = DBClient(
+                db_url=self._config.get('db_url', 'sqlite:///./bachelor_crawler.db')
+            )
+
+    # ------------------------------------------------------------------ crawl
 
     def crawl(
         self,
@@ -126,6 +125,8 @@ class FocusedCrawler:
         effective_domain, effective_start_path = base_domain, ''
         first_request = True
 
+        self._logger.section(f'Crawl-Start: {start_url}')
+
         with httpx.Client(
             follow_redirects=True,
             max_redirects=self._config['max_redirects'],
@@ -135,26 +136,32 @@ class FocusedCrawler:
             while queue and len(results) < limit:
                 curr_url, anchor, ctx = queue.pop(0)
 
-                # Bilder und Mediendateien überspringen
+                # --- Skip: Bilder / Medien
                 if _is_skip_url(curr_url):
                     evaluator.add_skipped()
                     continue
 
+                # --- Skip: bereits besucht / sensibler Pfad
                 curr_base = self._get_url_base(curr_url)
                 if curr_base in visited_urls or self._privacy.is_sensitive_url(curr_url):
                     evaluator.add_skipped()
+                    self._logger.crawl_step(curr_url, 'SKIP', reason='besucht/sensibel')
                     continue
                 visited_urls.add(curr_base)
 
+                # --- RAM-Monitoring
                 mem_mb = self._get_rss_mb()
                 if mem_mb > self._config['ram_warn_mb']:
-                    self._logger.info(
-                        'SYSTEM', 'RAM-Warnung',
-                        rss_mb=round(mem_mb, 1), queue_size=len(queue)
+                    self._logger.crawl_step(
+                        curr_url, 'RAM',
+                        rss_mb=round(mem_mb, 1),
+                        queue_size=len(queue),
                     )
 
+                # --- robots.txt
                 if self._robots and not self._robots.is_allowed(curr_url):
                     evaluator.add_robots_blocked()
+                    self._logger.crawl_step(curr_url, 'ROBOTS')
                     self._logger.privacy(curr_url, 'ROBOTS_DISALLOWED', 'robots.txt blockiert')
                     continue
 
@@ -167,13 +174,13 @@ class FocusedCrawler:
                 elif delay:
                     time.sleep(delay)
 
+                # --- HTTP-Fetch
+                self._logger.crawl_step(curr_url, 'FETCH')
                 t0 = time.time()
                 try:
                     resp = client.get(curr_url)
                 except Exception as e:
-                    self._logger.error(
-                        'HTTP', f'Request-Fehler: {str(e)[:80]}', url=curr_url
-                    )
+                    self._logger.error('HTTP', f'Request-Fehler: {str(e)[:80]}', url=curr_url)
                     continue
 
                 if self._robots:
@@ -182,6 +189,7 @@ class FocusedCrawler:
                 final_url = str(resp.url)
                 final_domain = urlparse(final_url).netloc
 
+                # --- VG-Redirect-Erkennung (erster Request)
                 if first_request:
                     first_request = False
                     if (
@@ -190,7 +198,13 @@ class FocusedCrawler:
                     ):
                         effective_domain = final_domain
                         effective_start_path = urlparse(final_url).path.rstrip('/')
+                        self._logger.crawl_step(
+                            curr_url, 'VG',
+                            effective_domain=effective_domain,
+                            effective_start_path=effective_start_path,
+                        )
 
+                # --- Domain-Guard
                 if self._strip_www(final_domain) != self._strip_www(effective_domain):
                     self._logger.privacy(
                         curr_url, 'DOMAIN_GUARD', f'Externe Domain: {final_domain}'
@@ -200,47 +214,98 @@ class FocusedCrawler:
                 if resp.status_code != 200:
                     continue
 
+                # --- Hash-Duplikat
                 is_pdf = curr_url.lower().endswith('.pdf')
                 content_hash = hashlib.sha256(resp.content).hexdigest()
                 if content_hash in visited_hashes:
                     evaluator.add_skipped()
+                    self._logger.crawl_step(curr_url, 'HASH_DUP')
                     continue
                 visited_hashes.add(content_hash)
 
+                # --- Extraktion
                 if is_pdf:
                     text = self._extract_pdf_text_bytes(resp.content)
                     blocks, new_links = [], []
+                    self._logger.crawl_step(
+                        curr_url, 'PDF',
+                        chars=len(text),
+                        fetch_ms=round(fetch_ms, 1),
+                    )
                 else:
                     raw_html = resp.text
+                    # JS-Rendering
                     if self._config.get('js_rendering') and self._is_js_rendered(raw_html):
+                        self._logger.crawl_step(curr_url, 'JS')
                         js_html = self._fetch_with_playwright(curr_url)
                         if js_html and len(js_html) > len(raw_html):
                             raw_html = js_html
+
                     text, blocks, new_links = self._extract_html(
                         raw_html, curr_url, effective_domain, effective_start_path
                     )
+
+                    # --- CPE Link-Priorisierung
                     scored_links = self._prioritizer.score_links(
                         new_links, page_text=text
                     )
+                    n_prio = 0
                     for sl in scored_links:
                         if len(queue) >= self._config['max_queue']:
                             break
                         target_base = self._get_url_base(sl.url)
-                        if target_base in visited_urls:
-                            continue
-                        if _is_skip_url(sl.url):
+                        if target_base in visited_urls or _is_skip_url(sl.url):
                             continue
                         entry = (sl.url, sl.anchor_text, '')
                         if sl.is_priority or sl.is_pdf:
                             queue.insert(0, entry)
+                            n_prio += 1
                         else:
                             queue.append(entry)
+                        # CPE-Score pro Link (DEBUG-Level)
+                        self._logger.cpe_score(
+                            url=sl.url,
+                            cpe_score=sl.score,
+                            anchor_score=getattr(sl, 'anchor_score', 0.0),
+                            context_score=getattr(sl, 'context_score', 0.0),
+                            url_score=getattr(sl, 'url_score', 0.0),
+                            page_score=getattr(sl, 'page_score', 0.0),
+                            is_priority=sl.is_priority,
+                        )
 
+                    self._logger.crawl_step(
+                        curr_url, 'DONE',
+                        http_status=resp.status_code,
+                        fetch_ms=round(fetch_ms, 1),
+                        links_found=len(new_links),
+                        links_prio=n_prio,
+                        blocks=len(blocks),
+                    )
+
+                # --- DSGVO-PII-Filter
                 if self._config['privacy_filter_pii']:
-                    text = self._privacy.filter_text(text, source_url=curr_url)
+                    filtered, n_replacements = self._privacy.filter_text_counted(
+                        text, source_url=curr_url
+                    )
+                    if n_replacements:
+                        self._logger.privacy(
+                            curr_url, 'PII_FILTERED',
+                            f'{n_replacements} Ersetzungen',
+                            replacements=n_replacements,
+                        )
+                    text = filtered
 
+                # --- Relevanzklassifikation (TF-IDF + BCW)
                 relevance = self._classifier.classify(text=text, url=curr_url)
+                self._logger.relevance(
+                    url=curr_url,
+                    score=relevance.score,
+                    relevant=relevance.is_relevant,
+                    top_category=relevance.top_category,
+                    is_pdf=is_pdf,
+                )
 
+                # --- LLM-Analyse (optional)
                 llm_result = None
                 if self._llm and self._llm.available:
                     llm_result = self._llm.analyse(text, url=curr_url)
@@ -255,7 +320,7 @@ class FocusedCrawler:
                 result = CrawlResult(
                     curr_url, text, relevance, content_hash,
                     is_pdf, resp.status_code, blocks,
-                    round(fetch_ms, 1), llm_result
+                    round(fetch_ms, 1), llm_result,
                 )
                 results.append(result)
                 evaluator.add_result(relevance, is_pdf=is_pdf)
@@ -270,6 +335,8 @@ class FocusedCrawler:
         if self._db:
             self._db.close()
         return results, report
+
+    # ---------------------------------------------------------------- helpers
 
     def _extract_html(
         self,
