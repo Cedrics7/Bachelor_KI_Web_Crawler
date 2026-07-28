@@ -262,14 +262,14 @@ class FocusedCrawler:
                             n_prio += 1
                         else:
                             queue.append(entry)
-                        # CPE-Score pro Link (DEBUG-Level)
+                        # CPE-Score pro Link loggen (sl.cpe_score ist das korrekte Attribut)
                         self._logger.cpe_score(
                             url=sl.url,
-                            cpe_score=sl.score,
-                            anchor_score=getattr(sl, 'anchor_score', 0.0),
-                            context_score=getattr(sl, 'context_score', 0.0),
-                            url_score=getattr(sl, 'url_score', 0.0),
-                            page_score=getattr(sl, 'page_score', 0.0),
+                            cpe_score=sl.cpe_score,
+                            anchor_score=sl.anchor_score,
+                            context_score=sl.context_score,
+                            url_score=sl.url_score,
+                            page_score=sl.page_score,
                             is_priority=sl.is_priority,
                         )
 
