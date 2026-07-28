@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Basis-Tabelle (abwärtskompatibel, ohne neue Spalten)
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS crawl_results (
     id              SERIAL PRIMARY KEY,
@@ -24,6 +23,8 @@ CREATE TABLE IF NOT EXISTS crawl_results (
     http_status     INTEGER     NOT NULL DEFAULT 200,
     relevance_score REAL,
     relevance_label TEXT,
+    top_category    TEXT,
+    confidence      REAL,
     fetch_time_ms   REAL,
     text_snippet    TEXT,
     blocks_json     TEXT,
@@ -41,6 +42,8 @@ CREATE TABLE IF NOT EXISTS crawl_results (
     http_status     INTEGER     NOT NULL DEFAULT 200,
     relevance_score REAL,
     relevance_label TEXT,
+    top_category    TEXT,
+    confidence      REAL,
     fetch_time_ms   REAL,
     text_snippet    TEXT,
     blocks_json     TEXT,
@@ -48,18 +51,19 @@ CREATE TABLE IF NOT EXISTS crawl_results (
 );
 """
 
-# Spalten die ggf. fehlen können (Migration)
-_MIGRATION_COLUMNS = [
-    ('top_category', 'TEXT'),
-    ('confidence',   'REAL'),
-]
+# Alle Spalten die in der finalen Tabelle existieren müssen
+_REQUIRED_COLUMNS = {
+    'run_id', 'url', 'content_hash', 'is_pdf', 'http_status',
+    'relevance_score', 'relevance_label', 'top_category', 'confidence',
+    'fetch_time_ms', 'text_snippet', 'blocks_json', 'crawled_at',
+}
 
 
 class DBClient:
     """
     Leichtgewichtiger DB-Client ohne ORM-Abhängigkeit.
     Erkennt automatisch SQLite vs. PostgreSQL anhand der DATABASE_URL.
-    Führt automatisch eine Spaltenmigration durch falls die Tabelle bereits existiert.
+    Prüft beim Start ob das Schema vollständig ist - rebuildet bei Bedarf.
     """
 
     def __init__(self, db_url: str) -> None:
@@ -67,7 +71,6 @@ class DBClient:
         self._is_sqlite = db_url.startswith('sqlite')
         self._conn = None
         self._connect()
-        self._migrate()
 
     def _connect(self) -> None:
         if self._is_sqlite:
@@ -76,57 +79,77 @@ class DBClient:
             self._conn = sqlite3.connect(path, check_same_thread=False)
             self._conn.row_factory = sqlite3.Row
             self._conn.execute('PRAGMA journal_mode=WAL;')
-            self._conn.execute(_CREATE_TABLE_SQLITE)
-            self._conn.commit()
+            self._ensure_schema_sqlite()
             logger.info('DB: SQLite verbunden -> %s', path)
         else:
             try:
                 import psycopg2
                 self._conn = psycopg2.connect(self._url)
-                with self._conn.cursor() as cur:
-                    cur.execute(_CREATE_TABLE_SQL)
-                self._conn.commit()
+                self._ensure_schema_pg()
                 logger.info('DB: PostgreSQL verbunden')
             except ImportError:
                 logger.error('DB: psycopg2 nicht installiert - pip install psycopg2-binary')
                 raise
 
-    def _migrate(self) -> None:
-        """
-        Fügt fehlende Spalten per ALTER TABLE nach (idempotent).
-        Wird bei jedem Start ausgeführt - bereits vorhandene Spalten werden übersprungen.
-        """
-        for col_name, col_type in _MIGRATION_COLUMNS:
-            try:
-                if self._is_sqlite:
-                    self._conn.execute(
-                        f'ALTER TABLE crawl_results ADD COLUMN {col_name} {col_type};'
-                    )
-                    self._conn.commit()
-                    logger.info('DB Migration: Spalte "%s" hinzugefügt', col_name)
-                else:
+    def _get_existing_columns_pg(self) -> set:
+        with self._conn.cursor() as cur:
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'crawl_results'
+            """)
+            return {row[0] for row in cur.fetchall()}
+
+    def _ensure_schema_pg(self) -> None:
+        """Prüft ob alle Pflicht-Spalten vorhanden sind. Falls nicht: Tabelle droppen und neu anlegen."""
+        with self._conn.cursor() as cur:
+            cur.execute(_CREATE_TABLE_SQL)
+        self._conn.commit()
+
+        existing = self._get_existing_columns_pg()
+        missing = _REQUIRED_COLUMNS - existing
+
+        if missing:
+            logger.warning(
+                'DB: Tabelle crawl_results hat veraltetes Schema (fehlen: %s). '
+                'Tabelle wird neu aufgebaut - bestehende Daten gehen verloren!',
+                ', '.join(sorted(missing))
+            )
+            with self._conn.cursor() as cur:
+                cur.execute('DROP TABLE IF EXISTS crawl_results;')
+                cur.execute(_CREATE_TABLE_SQL)
+            self._conn.commit()
+            logger.info('DB: Tabelle crawl_results neu angelegt.')
+        else:
+            # Optional fehlende neue Spalten nachruesten (non-breaking)
+            for col in sorted(_REQUIRED_COLUMNS - existing):
+                try:
                     with self._conn.cursor() as cur:
-                        cur.execute(
-                            f'ALTER TABLE crawl_results ADD COLUMN IF NOT EXISTS {col_name} {col_type};'
-                        )
+                        cur.execute(f'ALTER TABLE crawl_results ADD COLUMN IF NOT EXISTS {col} TEXT;')
                     self._conn.commit()
-                    logger.info('DB Migration: Spalte "%s" geprüft/hinzugefügt', col_name)
-            except Exception as e:
-                # SQLite wirft einen Fehler wenn Spalte bereits existiert -> ignorieren
-                if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
-                    logger.debug('DB Migration: Spalte "%s" bereits vorhanden', col_name)
-                else:
-                    logger.warning('DB Migration Fehler bei "%s": %s', col_name, e)
+                except Exception as e:
+                    logger.debug('Migration %s: %s', col, e)
+
+    def _ensure_schema_sqlite(self) -> None:
+        """Für SQLite: Tabelle anlegen, bei fehlendem Schema neu aufbauen."""
+        self._conn.execute(_CREATE_TABLE_SQLITE)
+        self._conn.commit()
+
+        cur = self._conn.execute("PRAGMA table_info(crawl_results)")
+        existing = {row[1] for row in cur.fetchall()}
+        missing = _REQUIRED_COLUMNS - existing
+
+        if missing:
+            logger.warning('DB SQLite: Schema veraltet (%s fehlen) - neu aufbauen.', ', '.join(sorted(missing)))
+            self._conn.execute('DROP TABLE IF EXISTS crawl_results;')
+            self._conn.execute(_CREATE_TABLE_SQLITE)
+            self._conn.commit()
+            logger.info('DB SQLite: Tabelle neu angelegt.')
 
     def close(self) -> None:
         if self._conn:
             self._conn.close()
 
     def save_result(self, run_id: str, result: 'CrawlResult') -> None:
-        """
-        Speichert ein CrawlResult in der Datenbank.
-        RelevanceResult-Attribute: score, is_relevant, top_category, confidence
-        """
         snippet = (result.text or '')[:2000]
         blocks_json = json.dumps(result.blocks or [], ensure_ascii=False)
 
