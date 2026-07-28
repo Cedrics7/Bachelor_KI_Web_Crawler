@@ -31,8 +31,24 @@ try:
 except ImportError:
     _PSUTIL = False
 
-# Regex zum Finden von PDF-URLs im Rohtext (auch außerhalb von <a>-Tags)
+# Bild- und Medien-Erweiterungen die nicht gecrawlt werden sollen
+_SKIP_EXTENSIONS = {
+    '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico',
+    '.mp4', '.mp3', '.avi', '.mov', '.wmv',
+    '.woff', '.woff2', '.ttf', '.eot',
+    '.css',
+    '.zip', '.tar', '.gz', '.rar',
+    '.xls', '.xlsx', '.doc', '.docx', '.ppt', '.pptx',
+}
+
+# Regex zum Finden von PDF-URLs im Rohtext
 _PDF_URL_RE = re.compile(r'https?://[^\s"<>]+\.pdf', re.IGNORECASE)
+
+
+def _is_skip_url(url: str) -> bool:
+    """True wenn die URL eine Bild- oder Medien-Datei ist die übersprungen werden soll."""
+    path = urlparse(url).path.lower()
+    return any(path.endswith(ext) for ext in _SKIP_EXTENSIONS)
 
 
 @dataclass
@@ -79,7 +95,6 @@ class FocusedCrawler:
         self._owns_logger = logger is None
         self._run_id = run_id or 'vollstaendig_run'
 
-        # LLM-Client (optional)
         self._llm: Optional[LLMClient] = None
         if self._config.get('llm_enabled'):
             self._llm = LLMClient(
@@ -90,7 +105,6 @@ class FocusedCrawler:
                 temperature=self._config.get('llm_temperature', 0.0),
             )
 
-        # DB-Client (optional)
         self._db: Optional[DBClient] = None
         if self._config.get('db_enabled'):
             self._db = DBClient(db_url=self._config.get('db_url', 'sqlite:///./bachelor_crawler.db'))
@@ -120,6 +134,12 @@ class FocusedCrawler:
         ) as client:
             while queue and len(results) < limit:
                 curr_url, anchor, ctx = queue.pop(0)
+
+                # Bilder und Mediendateien überspringen
+                if _is_skip_url(curr_url):
+                    evaluator.add_skipped()
+                    continue
+
                 curr_base = self._get_url_base(curr_url)
                 if curr_base in visited_urls or self._privacy.is_sensitive_url(curr_url):
                     evaluator.add_skipped()
@@ -208,6 +228,8 @@ class FocusedCrawler:
                         target_base = self._get_url_base(sl.url)
                         if target_base in visited_urls:
                             continue
+                        if _is_skip_url(sl.url):
+                            continue
                         entry = (sl.url, sl.anchor_text, '')
                         if sl.is_priority or sl.is_pdf:
                             queue.insert(0, entry)
@@ -219,7 +241,6 @@ class FocusedCrawler:
 
                 relevance = self._classifier.classify(text=text, url=curr_url)
 
-                # --- LLM-Analyse (optional) ---
                 llm_result = None
                 if self._llm and self._llm.available:
                     llm_result = self._llm.analyse(text, url=curr_url)
@@ -239,7 +260,6 @@ class FocusedCrawler:
                 results.append(result)
                 evaluator.add_result(relevance, is_pdf=is_pdf)
 
-                # --- DB-Persistierung (optional) ---
                 if self._db:
                     self._db.save_result(self._run_id, result)
 
@@ -279,6 +299,8 @@ class FocusedCrawler:
             if effective_start_path and not parsed.path.startswith(effective_start_path):
                 continue
             if not parsed.scheme.startswith('http'):
+                continue
+            if _is_skip_url(full_url):
                 continue
             anchor_text = a_tag.get_text(strip=True)[:200]
             parent = a_tag.find_parent(['p', 'li', 'div', 'td'])
