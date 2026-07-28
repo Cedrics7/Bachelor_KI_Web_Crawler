@@ -86,7 +86,7 @@ def run_all() -> None:
                 '  ✓ %s: %d Seiten, %d relevant (Harvest Rate: %.1f%%)',
                 ort,
                 report.total_crawled,
-                report.relevant_count,
+                report.total_relevant,      # korrekter Attributname
                 report.harvest_rate * 100,
             )
             _update_last_scanned(conn, ags)
