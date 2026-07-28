@@ -31,7 +31,8 @@ try:
 except ImportError:
     _PSUTIL = False
 
-_PDF_URL_RE = re.compile(r'https?://[^\s"'<>]+\.pdf', re.IGNORECASE)
+# Regex zum Finden von PDF-URLs im Rohtext (auch außerhalb von <a>-Tags)
+_PDF_URL_RE = re.compile(r'https?://[^\s"<>]+\.pdf', re.IGNORECASE)
 
 
 @dataclass
