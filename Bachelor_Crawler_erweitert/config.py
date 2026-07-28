@@ -1,7 +1,7 @@
 """
 Zentrale Konfiguration für Bachelor_Crawler_erweitert.
-Liest Werte aus der .env-Datei via python-dotenv.
-Sucht die .env an mehreren Stellen (robust gegen verschiedene Working Directories).
+Kompatibel mit der .env aus crawler_js (DB_HOST, DB_NAME, DB_USER, DB_PASS, DB_PORT).
+Fallback auf DATABASE_URL falls vorhanden, sonst SQLite.
 """
 from __future__ import annotations
 import os
@@ -20,20 +20,17 @@ def _load_env() -> None:
     except ImportError:
         logger.warning('python-dotenv nicht installiert. Bitte: pip install python-dotenv')
         return
-
-    # Kandidaten in Reihenfolge: Root, Parent, CWD
     candidates = [
-        Path(__file__).resolve().parent.parent / '.env',  # Projektroot (normal)
-        Path(__file__).resolve().parent / '.env',          # direkt im Modul
-        Path.cwd() / '.env',                               # Working Directory (PyCharm)
-        Path.cwd().parent / '.env',                        # Parent von CWD
+        Path(__file__).resolve().parent.parent / '.env',
+        Path(__file__).resolve().parent / '.env',
+        Path.cwd() / '.env',
+        Path.cwd().parent / '.env',
     ]
     for candidate in candidates:
         if candidate.exists():
             load_dotenv(dotenv_path=candidate, override=True)
             logger.debug('Config: .env geladen von %s', candidate)
             return
-
     logger.warning(
         'Config: Keine .env gefunden. Gesuchte Pfade:\n%s',
         '\n'.join(f'  {c}' for c in candidates)
@@ -64,9 +61,32 @@ def _int(val: str | None, default: int) -> int:
 
 
 # ---------------------------------------------------------------
-# Datenbankverbindung
+# DATABASE_URL aufbauen:
+# Priorität 1: DATABASE_URL direkt in .env
+# Priorität 2: Einzelvariablen DB_HOST/DB_NAME/DB_USER/DB_PASS/DB_PORT (wie crawler_js)
+# Fallback:    SQLite lokal
 # ---------------------------------------------------------------
-DATABASE_URL: str = os.getenv('DATABASE_URL', 'sqlite:///./bachelor_crawler.db')
+def _build_database_url() -> str:
+    # Direkte URL hat Vorrang
+    url = os.getenv('DATABASE_URL')
+    if url and not url.startswith('sqlite'):
+        return url
+
+    # Einzelvariablen (Format aus crawler_js)
+    host = os.getenv('DB_HOST')
+    name = os.getenv('DB_NAME')
+    user = os.getenv('DB_USER')
+    password = os.getenv('DB_PASS')
+    port = os.getenv('DB_PORT', '5432')
+
+    if host and name and user and password:
+        return f'postgresql://{user}:{password}@{host}:{port}/{name}'
+
+    # SQLite-Fallback
+    return url or 'sqlite:///./bachelor_crawler.db'
+
+
+DATABASE_URL: str = _build_database_url()
 
 # ---------------------------------------------------------------
 # LLM-Zugang
@@ -79,10 +99,7 @@ LLM_MODEL: str = os.getenv('LLM_MODEL', 'gpt-4o-mini')
 # Crawler-Verhalten
 # ---------------------------------------------------------------
 DEFAULT_CONFIG: Dict[str, Any] = {
-    'user_agent': os.getenv(
-        'CRAWLER_USER_AGENT',
-        'Mozilla/5.0 (BachelorCrawlerVollstaendig)'
-    ),
+    'user_agent':           os.getenv('CRAWLER_USER_AGENT', 'Mozilla/5.0 (BachelorCrawlerVollstaendig)'),
     'timeout_seconds':      _int(os.getenv('CRAWLER_TIMEOUT_SECONDS'), 12),
     'max_redirects':        _int(os.getenv('CRAWLER_MAX_REDIRECTS'), 5),
     'crawl_delay_default':  _float(os.getenv('CRAWLER_REQUEST_DELAY'), 1.0),
@@ -100,26 +117,36 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'vg_max_queue':         _int(os.getenv('CRAWLER_VG_MAX_QUEUE'), 80),
     'ram_warn_mb':          _int(os.getenv('CRAWLER_RAM_WARN_MB'), 1500),
     'log_dir':              os.getenv('CRAWLER_LOG_DIR', 'logs'),
-    # LLM
     'llm_enabled':          _bool(os.getenv('CRAWLER_LLM_ENABLED'), False),
     'llm_model':            LLM_MODEL,
     'llm_max_tokens':       _int(os.getenv('CRAWLER_LLM_MAX_TOKENS'), 512),
     'llm_temperature':      _float(os.getenv('CRAWLER_LLM_TEMPERATURE'), 0.0),
-    # Datenbank
     'db_enabled':           _bool(os.getenv('CRAWLER_DB_ENABLED'), False),
     'db_url':               DATABASE_URL,
 }
 
 # ---------------------------------------------------------------
-# Startup-Log: zeigt geladene Werte damit man sieht was aktiv ist
+# Startup-Log
 # ---------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
 )
+
+# Passwort aus URL maskieren fuer den Log
+_db_log = DATABASE_URL
+if '@' in _db_log:
+    try:
+        scheme, rest = _db_log.split('://', 1)
+        userinfo, hostpart = rest.split('@', 1)
+        user = userinfo.split(':')[0]
+        _db_log = f'{scheme}://{user}:***@{hostpart}'
+    except Exception:
+        _db_log = '(konnte nicht maskiert werden)'
+
 logger.info('=== Crawler Config geladen ===')
-logger.info('  DATABASE_URL  : %s', DATABASE_URL)
-logger.info('  db_enabled    : %s', DEFAULT_CONFIG["db_enabled"])
-logger.info('  llm_enabled   : %s', DEFAULT_CONFIG["llm_enabled"])
-logger.info('  max_pages     : %s', DEFAULT_CONFIG["max_pages"])
-logger.info('  js_rendering  : %s', DEFAULT_CONFIG["js_rendering"])
+logger.info('  DATABASE_URL  : %s', _db_log)
+logger.info('  db_enabled    : %s', DEFAULT_CONFIG['db_enabled'])
+logger.info('  llm_enabled   : %s', DEFAULT_CONFIG['llm_enabled'])
+logger.info('  max_pages     : %s', DEFAULT_CONFIG['max_pages'])
+logger.info('  js_rendering  : %s', DEFAULT_CONFIG['js_rendering'])
