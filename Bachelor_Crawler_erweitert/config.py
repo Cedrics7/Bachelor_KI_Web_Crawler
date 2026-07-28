@@ -2,6 +2,8 @@
 Zentrale Konfiguration für Bachelor_Crawler_erweitert.
 Kompatibel mit der .env aus crawler_js (DB_HOST, DB_NAME, DB_USER, DB_PASS, DB_PORT).
 Fallback auf DATABASE_URL falls vorhanden, sonst SQLite.
+
+ALLE Parameter werden hier zentral verwaltet - kein os.getenv() in anderen Modulen.
 """
 from __future__ import annotations
 import os
@@ -67,22 +69,16 @@ def _int(val: str | None, default: int) -> int:
 # Fallback:    SQLite lokal
 # ---------------------------------------------------------------
 def _build_database_url() -> str:
-    # Direkte URL hat Vorrang
     url = os.getenv('DATABASE_URL')
     if url and not url.startswith('sqlite'):
         return url
-
-    # Einzelvariablen (Format aus crawler_js)
-    host = os.getenv('DB_HOST')
-    name = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
+    host     = os.getenv('DB_HOST')
+    name     = os.getenv('DB_NAME')
+    user     = os.getenv('DB_USER')
     password = os.getenv('DB_PASS')
-    port = os.getenv('DB_PORT', '5432')
-
+    port     = os.getenv('DB_PORT', '5432')
     if host and name and user and password:
         return f'postgresql://{user}:{password}@{host}:{port}/{name}'
-
-    # SQLite-Fallback
     return url or 'sqlite:///./bachelor_crawler.db'
 
 
@@ -92,37 +88,59 @@ DATABASE_URL: str = _build_database_url()
 # LLM-Zugang
 # ---------------------------------------------------------------
 OPENAI_API_KEY: str | None = os.getenv('OPENAI_API_KEY')
-OPENAI_BASE_URL: str = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
-LLM_MODEL: str = os.getenv('LLM_MODEL', 'gpt-4o-mini')
+OPENAI_BASE_URL: str       = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+LLM_MODEL: str             = os.getenv('LLM_MODEL', 'gpt-4o-mini')
 
 # ---------------------------------------------------------------
-# Crawler-Verhalten
+# Crawler-Konfiguration (alle Parameter zentral hier)
 # ---------------------------------------------------------------
 DEFAULT_CONFIG: Dict[str, Any] = {
-    'user_agent':           os.getenv('CRAWLER_USER_AGENT', 'Mozilla/5.0 (BachelorCrawlerVollstaendig)'),
-    'timeout_seconds':      _int(os.getenv('CRAWLER_TIMEOUT_SECONDS'), 12),
-    'max_redirects':        _int(os.getenv('CRAWLER_MAX_REDIRECTS'), 5),
-    'crawl_delay_default':  _float(os.getenv('CRAWLER_REQUEST_DELAY'), 1.0),
-    'relevance_threshold':  _float(os.getenv('CRAWLER_RELEVANCE_THRESHOLD'), 0.15),
-    'priority_threshold':   _float(os.getenv('CRAWLER_PRIORITY_THRESHOLD'), 0.10),
-    'robots_respect':       _bool(os.getenv('CRAWLER_ROBOTS_RESPECT'), True),
-    'robots_timeout':       _int(os.getenv('CRAWLER_ROBOTS_TIMEOUT'), 8),
-    'privacy_filter_pii':   _bool(os.getenv('CRAWLER_PRIVACY_FILTER_PII'), True),
-    'js_rendering':         _bool(os.getenv('CRAWLER_JS_RENDERING'), False),
-    'js_min_chars':         _int(os.getenv('CRAWLER_JS_MIN_CHARS'), 500),
-    'js_timeout':           _int(os.getenv('CRAWLER_JS_TIMEOUT'), 20),
-    'js_wait_until':        os.getenv('CRAWLER_JS_WAIT_UNTIL', 'networkidle'),
-    'max_pages':            _int(os.getenv('CRAWLER_MAX_PAGES'), 100),
-    'max_queue':            _int(os.getenv('CRAWLER_MAX_QUEUE'), 300),
-    'vg_max_queue':         _int(os.getenv('CRAWLER_VG_MAX_QUEUE'), 80),
-    'ram_warn_mb':          _int(os.getenv('CRAWLER_RAM_WARN_MB'), 1500),
-    'log_dir':              os.getenv('CRAWLER_LOG_DIR', 'logs'),
-    'llm_enabled':          _bool(os.getenv('CRAWLER_LLM_ENABLED'), False),
-    'llm_model':            LLM_MODEL,
-    'llm_max_tokens':       _int(os.getenv('CRAWLER_LLM_MAX_TOKENS'), 512),
-    'llm_temperature':      _float(os.getenv('CRAWLER_LLM_TEMPERATURE'), 0.0),
-    'db_enabled':           _bool(os.getenv('CRAWLER_DB_ENABLED'), False),
-    'db_url':               DATABASE_URL,
+    # HTTP
+    'user_agent':               os.getenv('CRAWLER_USER_AGENT', 'Mozilla/5.0 (BachelorCrawlerVollstaendig)'),
+    'timeout_seconds':          _int(os.getenv('CRAWLER_TIMEOUT_SECONDS'), 12),
+    'max_redirects':            _int(os.getenv('CRAWLER_MAX_REDIRECTS'), 5),
+    'crawl_delay_default':      _float(os.getenv('CRAWLER_REQUEST_DELAY'), 1.0),
+
+    # Relevanz
+    'relevance_threshold':      _float(os.getenv('CRAWLER_RELEVANCE_THRESHOLD'), 0.15),
+    'priority_threshold':       _float(os.getenv('CRAWLER_PRIORITY_THRESHOLD'), 0.10),
+
+    # robots.txt
+    'robots_respect':           _bool(os.getenv('CRAWLER_ROBOTS_RESPECT'), True),
+    'robots_timeout':           _int(os.getenv('CRAWLER_ROBOTS_TIMEOUT'), 8),
+
+    # DSGVO
+    'privacy_filter_pii':       _bool(os.getenv('CRAWLER_PRIVACY_FILTER_PII'), True),
+
+    # JS-Rendering
+    'js_rendering':             _bool(os.getenv('CRAWLER_JS_RENDERING'), False),
+    'js_min_chars':             _int(os.getenv('CRAWLER_JS_MIN_CHARS'), 500),
+    'js_timeout':               _int(os.getenv('CRAWLER_JS_TIMEOUT'), 20),
+    'js_wait_until':            os.getenv('CRAWLER_JS_WAIT_UNTIL', 'networkidle'),
+
+    # Queue & Limits
+    'max_pages':                _int(os.getenv('CRAWLER_MAX_PAGES'), 50),
+    'max_queue':                _int(os.getenv('CRAWLER_MAX_QUEUE'), 300),
+    'vg_max_queue':             _int(os.getenv('CRAWLER_VG_MAX_QUEUE'), 80),
+    'ram_warn_mb':              _int(os.getenv('CRAWLER_RAM_WARN_MB'), 1500),
+
+    # Multi-Target-Lauf (run_crawler.py)
+    'max_targets':              _int(os.getenv('CRAWLER_MAX_TARGETS'), 0),     # 0 = alle
+    'prio_region':              os.getenv('CRAWLER_PRIO_REGION', ''),          # z.B. 'Bayern'
+    'sleep_between_targets':    _float(os.getenv('CRAWLER_SLEEP_BETWEEN_TARGETS'), 1.0),
+
+    # Logging
+    'log_dir':                  os.getenv('CRAWLER_LOG_DIR', 'logs'),
+
+    # LLM
+    'llm_enabled':              _bool(os.getenv('CRAWLER_LLM_ENABLED'), False),
+    'llm_model':                LLM_MODEL,
+    'llm_max_tokens':           _int(os.getenv('CRAWLER_LLM_MAX_TOKENS'), 512),
+    'llm_temperature':          _float(os.getenv('CRAWLER_LLM_TEMPERATURE'), 0.0),
+
+    # Datenbank
+    'db_enabled':               _bool(os.getenv('CRAWLER_DB_ENABLED'), False),
+    'db_url':                   DATABASE_URL,
 }
 
 # ---------------------------------------------------------------
@@ -133,20 +151,21 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
 )
 
-# Passwort aus URL maskieren fuer den Log
 _db_log = DATABASE_URL
 if '@' in _db_log:
     try:
         scheme, rest = _db_log.split('://', 1)
         userinfo, hostpart = rest.split('@', 1)
-        user = userinfo.split(':')[0]
-        _db_log = f'{scheme}://{user}:***@{hostpart}'
+        _db_log = f'{scheme}://{userinfo.split(":")[0]}:***@{hostpart}'
     except Exception:
         _db_log = '(konnte nicht maskiert werden)'
 
 logger.info('=== Crawler Config geladen ===')
-logger.info('  DATABASE_URL  : %s', _db_log)
-logger.info('  db_enabled    : %s', DEFAULT_CONFIG['db_enabled'])
-logger.info('  llm_enabled   : %s', DEFAULT_CONFIG['llm_enabled'])
-logger.info('  max_pages     : %s', DEFAULT_CONFIG['max_pages'])
-logger.info('  js_rendering  : %s', DEFAULT_CONFIG['js_rendering'])
+logger.info('  DATABASE_URL         : %s', _db_log)
+logger.info('  db_enabled           : %s', DEFAULT_CONFIG['db_enabled'])
+logger.info('  llm_enabled          : %s', DEFAULT_CONFIG['llm_enabled'])
+logger.info('  max_pages            : %s', DEFAULT_CONFIG['max_pages'])
+logger.info('  max_targets          : %s (0=alle)', DEFAULT_CONFIG['max_targets'])
+logger.info('  prio_region          : %s', DEFAULT_CONFIG['prio_region'] or '(keine)')
+logger.info('  sleep_between_targets: %ss', DEFAULT_CONFIG['sleep_between_targets'])
+logger.info('  js_rendering         : %s', DEFAULT_CONFIG['js_rendering'])
