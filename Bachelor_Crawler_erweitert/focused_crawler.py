@@ -49,13 +49,21 @@ _SKIP_URL_PATTERNS = re.compile(
 
 _PDF_URL_RE = re.compile(r'https?://[^\s"<>]+\.pdf', re.IGNORECASE)
 
+# Maximale erlaubte Pfadtiefe relativ zur Start-URL.
+# Verhindert URL-Explosionen durch fehlerhafte Link-Concatenation
+# (z.B. /impressum/feuerwehren/gewerbestellenmarkt/aktuelle-stellenangebote/...).
+_MAX_PATH_DEPTH = 8
+
 
 def _is_skip_url(url: str) -> bool:
     path = urlparse(url).path.lower()
     if any(path.endswith(ext) for ext in _SKIP_EXTENSIONS):
         return True
-    # Ortsplan-Redirect-Seiten ohne echten Inhalt überspringen
     if _SKIP_URL_PATTERNS.search(url):
+        return True
+    # Zu tiefe Pfade überspringen (Symptom von Link-Concatenation-Bug)
+    depth = len([s for s in path.split('/') if s])
+    if depth > _MAX_PATH_DEPTH:
         return True
     return False
 
@@ -150,7 +158,7 @@ class FocusedCrawler:
             while queue and len(results) < limit:
                 curr_url, anchor, ctx = queue.pop(0)
 
-                # --- Skip: Bilder / Medien / leere Kategorieseiten (Ortsplan)
+                # --- Skip: Bilder / Medien / leere Kategorieseiten / zu tiefe Pfade
                 if _is_skip_url(curr_url):
                     evaluator.add_skipped()
                     continue
@@ -353,7 +361,6 @@ class FocusedCrawler:
                         # Rohlog in crawl_results_bachelor
                         self._db.save_result(self._run_id, result)
                         # LLM-Maßnahmen in crawl_results (wie crawler_js)
-                        # Nur wenn wirklich Maßnahmen gefunden wurden
                         if llm_result is not None and len(llm_result.get('massnahmen', [])) > 0:
                             self._db.save_llm_result(
                                 ags=ags,
@@ -397,7 +404,9 @@ class FocusedCrawler:
                     blocks.append(block_text[:500])
         bs_links = []
         for a_tag in soup.find_all('a', href=True):
-            href = a_tag.get('href', '')
+            href = a_tag.get('href', '').strip()
+            if not href or href.startswith('#') or href.startswith('javascript:'):
+                continue
             full_url = urljoin(base_url, href)
             parsed = urlparse(full_url)
             if self._strip_www(parsed.netloc) != self._strip_www(effective_domain):
@@ -408,12 +417,17 @@ class FocusedCrawler:
                 continue
             if _is_skip_url(full_url):
                 continue
+            # Fragment-URLs normalisieren (ohne #fragment)
+            clean_url = urlunparse((
+                parsed.scheme, parsed.netloc, parsed.path,
+                parsed.params, parsed.query, ''
+            ))
             anchor_text = a_tag.get_text(strip=True)[:200]
             parent = a_tag.find_parent(['p', 'li', 'div', 'td'])
             context = (
                 parent.get_text(separator=' ', strip=True)[:300] if parent else ''
             )
-            bs_links.append((full_url, anchor_text, context))
+            bs_links.append((clean_url, anchor_text, context))
         regex_links = []
         for raw_url in _PDF_URL_RE.findall(html):
             if urlparse(raw_url).netloc == effective_domain:

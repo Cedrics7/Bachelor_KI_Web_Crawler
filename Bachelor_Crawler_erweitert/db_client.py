@@ -74,7 +74,6 @@ CREATE TABLE IF NOT EXISTS {TABLE_RAW} (
 
 # ---------------------------------------------------------------
 # DDL: crawl_results (LLM-zertifiziert, kompatibel mit crawler_js)
-# Neue Spalte: source = 'bachelor_crawler' damit Einträge unterscheidbar sind
 # ---------------------------------------------------------------
 _CREATE_RESULT_PG = f"""
 CREATE TABLE IF NOT EXISTS {TABLE_RESULT} (
@@ -153,6 +152,54 @@ def _sanitize(text: str | None, max_len: int = 0) -> str | None:
     if max_len:
         text = text[:max_len]
     return text
+
+
+def _extract_funde(llm: dict, fallback_url: str, fallback_kategorie: str | None) -> list[dict]:
+    """
+    Normalisiert das LLM-Ergebnis zu einer einheitlichen Liste von Fund-Dicts.
+
+    Das LLM liefert Maßnahmen unter verschiedenen Keys:
+      - 'massnahmen'  (Bachelor-Crawler-Standard, Liste von Dicts)
+      - 'funde'       (älteres Format)
+      - 'results'     (alternatives Format)
+    Jedes Element der Liste wird auf die erwarteten DB-Felder gemappt.
+    """
+    # Priorität: massnahmen > funde > results
+    raw_list = llm.get('massnahmen') or llm.get('funde') or llm.get('results') or []
+
+    if not raw_list:
+        return []
+
+    funde = []
+    for item in raw_list:
+        if not isinstance(item, dict):
+            # Einfacher String → als Maßnahme-Titel behandeln
+            item = {'massnahme': str(item)}
+
+        massnahme = (
+            item.get('massnahme')
+            or item.get('titel')
+            or item.get('title')
+            or item.get('beschreibung')
+            or item.get('reason')
+        )
+        if not massnahme:
+            continue
+
+        kategorie = (
+            item.get('kategorie')
+            or item.get('top_category')
+            or fallback_kategorie
+        )
+        funde.append({
+            'massnahme':       massnahme,
+            'kategorie':       kategorie,
+            'adresse':         item.get('adresse') or item.get('address'),
+            'massnahme_start': item.get('massnahme_start') or item.get('start_date'),
+            'massnahme_ende':  item.get('massnahme_ende')  or item.get('end_date'),
+            'massnahme_url':   item.get('massnahme_url')   or item.get('quelle_url') or fallback_url,
+        })
+    return funde
 
 
 class DBClient:
@@ -333,28 +380,28 @@ class DBClient:
     def save_llm_result(self, ags: str | None, result: 'CrawlResult', start_time: datetime) -> None:
         """
         Schreibt LLM-bestätigte Funde in crawl_results (kompatibel mit crawler_js).
-        Ein llm_result kann mehrere Funde (massnahmen) enthalten.
-        Duplikate (ags + massnahme + massnahme_start) werden übersprungen.
+        Liest Maßnahmen aus llm_result['massnahmen'] (Bachelor-Standard),
+        mit Fallback auf 'funde' und 'results' für ältere Formate.
         """
         llm = result.llm_result or {}
+        fallback_kategorie = result.relevance.top_category if result.relevance else None
 
-        # LLM kann entweder eine Liste von Funden oder einen einzelnen Fund liefern
-        funde = llm.get('funde') or llm.get('results') or []
+        funde = _extract_funde(llm, fallback_url=result.url, fallback_kategorie=fallback_kategorie)
         if not funde:
-            # Fallback: llm_result selbst als einzelnen Fund behandeln
-            funde = [llm]
+            logger.debug('DB crawl_results: keine Maßnahmen in llm_result für %s', result.url)
+            return
 
         end_time = datetime.now()
         inserted = 0
         skipped  = 0
 
         for item in funde:
-            massnahme       = _sanitize(item.get('massnahme') or item.get('title') or item.get('reason'), max_len=500)
-            kategorie       = _sanitize(item.get('kategorie') or item.get('top_category') or result.relevance.top_category if result.relevance else None, max_len=200)
-            adresse         = _sanitize(item.get('adresse') or item.get('address'), max_len=500)
-            massnahme_start = item.get('massnahme_start') or item.get('start_date')
-            massnahme_ende  = item.get('massnahme_ende')  or item.get('end_date')
-            massnahme_url   = _sanitize(item.get('massnahme_url') or item.get('quelle_url') or result.url, max_len=1000)
+            massnahme       = _sanitize(item['massnahme'], max_len=500)
+            kategorie       = _sanitize(item['kategorie'], max_len=200)
+            adresse         = _sanitize(item['adresse'], max_len=500)
+            massnahme_start = item['massnahme_start']
+            massnahme_ende  = item['massnahme_ende']
+            massnahme_url   = _sanitize(item['massnahme_url'], max_len=1000)
 
             if not massnahme:
                 continue
