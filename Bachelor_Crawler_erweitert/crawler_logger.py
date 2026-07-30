@@ -11,6 +11,10 @@ from datetime import datetime
 
 _STD = logging.getLogger('crawler')
 
+# Keys die als Positional-Parameter in _write() existieren und daher
+# niemals via **data hereinkommen duerfen (wuerden TypeError ausloesen).
+_RESERVED_KEYS = frozenset({'event', 'level', 'message', 'ts'})
+
 # Konsolen-Format-Mapping fuer lesbare Ausgabe
 _CONSOLE_FORMAT = {
     'SECTION':           '  ──── {message} ────',
@@ -29,10 +33,10 @@ _CONSOLE_FORMAT = {
     'PRIVACY.ROBOTS_DISALLOWED': '  🚫 PII/ROBOTS  {url}',
     'PRIVACY.DOMAIN_GUARD':      '  🚫 DOMAIN      {url}',
     'PRIVACY.PII_FILTERED':      '  🔒 PII-FILTER  {url}  ({replacements} Ersetzungen)',
-    'EVALUATION.FOCUSED':'  📊 EVALUATION  Seiten={total_crawled}  Relevant={total_relevant}'  
-                          '  HR={harvest_rate:.1%}  Skipped={total_skipped}  PDFs={total_pdfs}'  
+    'EVALUATION.FOCUSED':'  📊 EVALUATION  Seiten={total_crawled}  Relevant={total_relevant}'
+                          '  HR={harvest_rate:.1%}  Skipped={total_skipped}  PDFs={total_pdfs}'
                           '  robots_blocked={total_robots_blocked}',
-    'ERROR':             '  ✗ FEHLER       {event}: {message}',
+    'ERROR':             '  ✗ FEHLER       {orig_event}: {message}',
 }
 
 
@@ -53,23 +57,26 @@ class CrawlerLogger:
     # ------------------------------------------------------------------ intern
 
     def _write(self, level: str, event: str, message: str = '', **data):
+        # Reservierte Keys aus data entfernen um TypeError zu verhindern.
+        # Falls ein Aufrufer z.B. event=... oder level=... in **data mitschickt
+        # (z.B. aus einem LLM-Result-Dict), wuerden diese mit den Positional-
+        # Parametern kollidieren.
+        safe_data = {k: v for k, v in data.items() if k not in _RESERVED_KEYS}
+
         row = {
-            'ts': datetime.now().isoformat(),
-            'level': level,
-            'event': event,
+            'ts':      datetime.now().isoformat(),
+            'level':   level,
+            'event':   event,
             'message': message,
-            **data,
+            **safe_data,
         }
-        # JSON-Datei
         with self.log_file.open('a', encoding='utf-8') as f:
             f.write(json.dumps(row, ensure_ascii=False) + '\n')
-        # Konsole
-        self._to_console(level, event, message, **data)
+        self._to_console(level, event, message, **safe_data)
 
     def _to_console(self, level: str, event: str, message: str, **data):
         template = _CONSOLE_FORMAT.get(event)
         if template is None:
-            # Fallback: generische Zeile
             extra = '  '.join(f'{k}={v}' for k, v in data.items() if v not in ('', None))
             line = f'  [{event}] {message}  {extra}'.rstrip()
         else:
@@ -99,12 +106,8 @@ class CrawlerLogger:
         self._write('DEBUG', event, message, **data)
 
     def error(self, event: str, message: str = '', **data):
-        # FIX: 'event' darf nicht als Keyword-Argument an _write() übergeben werden,
-        # da _write() 'event' bereits als Positional-Parameter hat.
-        # Wir nutzen die EVENT-Konstante 'ERROR' als event-Wert für _write()
-        # und übergeben den ursprünglichen event-Namen sicher über **data.
-        data['event'] = event
-        self._write('ERROR', 'ERROR', message, **data)
+        # 'orig_event' damit das ERROR-Template {orig_event} anzeigen kann
+        self._write('ERROR', 'ERROR', message, orig_event=event, **data)
 
     def crawl_step(self, url: str, step: str, **data):
         self._write('INFO', f'CRAWL.{step}', url=url, **data)
@@ -137,7 +140,6 @@ class CrawlerLogger:
         self._write('INFO', f'PRIVACY.{event}', message, url=url, **data)
 
     def evaluation(self, report: dict, label: str = 'FOCUSED'):
-        # Flache Schluessel direkt in **data, damit das Template greift
         self._write('INFO', f'EVALUATION.{label}', '', **report)
 
     def close(self):
