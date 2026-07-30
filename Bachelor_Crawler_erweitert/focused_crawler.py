@@ -50,9 +50,11 @@ _SKIP_URL_PATTERNS = re.compile(
 _PDF_URL_RE = re.compile(r'https?://[^\s"<>]+\.pdf', re.IGNORECASE)
 
 # Maximale erlaubte Pfadtiefe relativ zur Start-URL.
-# Verhindert URL-Explosionen durch fehlerhafte Link-Concatenation
-# (z.B. /impressum/feuerwehren/gewerbestellenmarkt/aktuelle-stellenangebote/...).
 _MAX_PATH_DEPTH = 8
+
+# Mindest-Sleep zwischen HTTP-Requests (Sekunden).
+# Verhindert "Server disconnected" bei Kommunal-Domains die Rate-Limiting haben.
+_DEFAULT_REQUEST_SLEEP = 0.5
 
 
 def _is_skip_url(url: str) -> bool:
@@ -61,7 +63,6 @@ def _is_skip_url(url: str) -> bool:
         return True
     if _SKIP_URL_PATTERNS.search(url):
         return True
-    # Zu tiefe Pfade überspringen (Symptom von Link-Concatenation-Bug)
     depth = len([s for s in path.split('/') if s])
     if depth > _MAX_PATH_DEPTH:
         return True
@@ -146,6 +147,8 @@ class FocusedCrawler:
         effective_domain, effective_start_path = base_domain, ''
         first_request = True
         crawl_start_time = datetime.now()
+        # Sleep zwischen Requests: robots crawl-delay hat Vorrang, sonst default
+        request_sleep = self._config.get('request_sleep', _DEFAULT_REQUEST_SLEEP)
 
         self._logger.section(f'Crawl-Start: {start_url}')
 
@@ -187,14 +190,11 @@ class FocusedCrawler:
                     self._logger.privacy(curr_url, 'ROBOTS_DISALLOWED', 'robots.txt blockiert')
                     continue
 
-                delay = max(
-                    self._config['crawl_delay_default'],
-                    self._robots.get_crawl_delay(curr_url) if self._robots else 0.0,
-                )
-                if self._robots:
-                    self._robots.wait_for_crawl_delay(curr_url)
-                elif delay:
-                    time.sleep(delay)
+                # --- Rate-Limiting: robots crawl-delay hat Vorrang, sonst request_sleep
+                robot_delay = self._robots.get_crawl_delay(curr_url) if self._robots else 0.0
+                effective_sleep = max(robot_delay, request_sleep)
+                if effective_sleep > 0:
+                    time.sleep(effective_sleep)
 
                 # --- HTTP-Fetch
                 self._logger.crawl_step(curr_url, 'FETCH')
@@ -268,6 +268,8 @@ class FocusedCrawler:
                     )
 
                     # --- CPE Link-Priorisierung
+                    # PDFs werden NICHT vorne in die Queue einsortiert.
+                    # Sie kommen ans Ende, damit HTML-Seiten das Budget nicht verlieren.
                     scored_links = self._prioritizer.score_links(
                         new_links, page_text=text
                     )
@@ -279,7 +281,8 @@ class FocusedCrawler:
                         if target_base in visited_urls or _is_skip_url(sl.url):
                             continue
                         entry = (sl.url, sl.anchor_text, '')
-                        if sl.is_priority or sl.is_pdf:
+                        # PDF-Links kommen ans Ende der Queue (kein Budget-Vorrang)
+                        if sl.is_priority and not sl.is_pdf:
                             queue.insert(0, entry)
                             n_prio += 1
                         else:
@@ -348,19 +351,14 @@ class FocusedCrawler:
                 results.append(result)
                 evaluator.add_result(relevance, is_pdf=is_pdf)
 
-                # --- DB-Speicherung:
-                # Gate 1: TF-IDF/BCW relevance.is_relevant == True
-                # Gate 2: LLM hat mindestens eine Maßnahme gefunden
-                #         (falls kein LLM aktiv, reicht Gate 1 allein)
+                # --- DB-Speicherung
                 if self._db and relevance.is_relevant:
                     llm_confirmed = (
-                        llm_result is None  # kein LLM → nur TF-IDF reicht
+                        llm_result is None
                         or llm_result.get('relevant', False) is True
                     )
                     if llm_confirmed:
-                        # Rohlog in crawl_results_bachelor
                         self._db.save_result(self._run_id, result)
-                        # LLM-Maßnahmen in crawl_results (wie crawler_js)
                         if llm_result is not None and len(llm_result.get('massnahmen', [])) > 0:
                             self._db.save_llm_result(
                                 ags=ags,
@@ -417,7 +415,6 @@ class FocusedCrawler:
                 continue
             if _is_skip_url(full_url):
                 continue
-            # Fragment-URLs normalisieren (ohne #fragment)
             clean_url = urlunparse((
                 parsed.scheme, parsed.netloc, parsed.path,
                 parsed.params, parsed.query, ''

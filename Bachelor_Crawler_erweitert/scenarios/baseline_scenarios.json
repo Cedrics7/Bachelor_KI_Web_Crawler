@@ -1,23 +1,23 @@
 [
   {
-    "label": "Buxtehude",
-    "seed_url": "https://www.buxtehude.de",
+    "label": "Leer",
+    "seed_url": "https://www.leer.de",
     "max_pages": 60,
     "reference_corpus_size": 10,
-    "notes": "Mittelgrosse Niedersachsen-Stadt; bekannte Infrastrukturprojekte im Stadtentwicklungsbereich"
+    "notes": "Mittelgrosse Niedersachsen-Stadt (Ostfriesland); keine restriktive robots.txt, gute Linkdichte"
   },
   {
-    "label": "Stade",
-    "seed_url": "https://www.stade.de",
+    "label": "Rotenburg",
+    "seed_url": "https://www.rotenburg-wuemme.de",
     "max_pages": 60,
     "reference_corpus_size": 8,
-    "notes": "Kreisstadt Stade, Niedersachsen; regionale Infrastrukturprojekte (Strasse, Breitband)"
+    "notes": "Kreisstadt Rotenburg (Wuemme), Niedersachsen; ersetzt Stade (restriktive robots.txt); vergleichbare Groesse"
   },
   {
-    "label": "Winsen-Luhe",
-    "seed_url": "https://www.winsen-luhe.de",
+    "label": "Barssel",
+    "seed_url": "https://www.barssel.de",
     "max_pages": 50,
     "reference_corpus_size": 6,
-    "notes": "Kleinstadt Niedersachsen; gute Vergleichbarkeit mit Buxtehude (aehnliche Groesse)"
+    "notes": "Kleinstadt Niedersachsen; gute Vergleichbarkeit mit Leer (aehnliche Groesse)"
   }
 ]
