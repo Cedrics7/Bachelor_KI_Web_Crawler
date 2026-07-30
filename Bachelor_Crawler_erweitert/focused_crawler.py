@@ -305,9 +305,11 @@ class FocusedCrawler:
                     is_pdf=is_pdf,
                 )
 
-                # --- LLM-Analyse (optional)
+                # --- LLM-Analyse (optional, nur für relevante Seiten)
+                # FIX #1: relevance.is_relevant als Gate verwenden –
+                # Seiten mit score=0.0/relevant=False werden nicht ans LLM geschickt.
                 llm_result = None
-                if self._llm and self._llm.available:
+                if self._llm and self._llm.available and relevance.is_relevant:
                     llm_result = self._llm.analyse(text, url=curr_url)
                     if llm_result:
                         self._logger.info(
