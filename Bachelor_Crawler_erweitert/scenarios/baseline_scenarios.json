@@ -1,0 +1,23 @@
+[
+  {
+    "label": "Buxtehude",
+    "seed_url": "https://www.buxtehude.de",
+    "max_pages": 60,
+    "reference_corpus_size": 10,
+    "notes": "Mittelgrosse Niedersachsen-Stadt; bekannte Infrastrukturprojekte im Stadtentwicklungsbereich"
+  },
+  {
+    "label": "Stade",
+    "seed_url": "https://www.stade.de",
+    "max_pages": 60,
+    "reference_corpus_size": 8,
+    "notes": "Kreisstadt Stade, Niedersachsen; regionale Infrastrukturprojekte (Strasse, Breitband)"
+  },
+  {
+    "label": "Winsen-Luhe",
+    "seed_url": "https://www.winsen-luhe.de",
+    "max_pages": 50,
+    "reference_corpus_size": 6,
+    "notes": "Kleinstadt Niedersachsen; gute Vergleichbarkeit mit Buxtehude (aehnliche Groesse)"
+  }
+]
