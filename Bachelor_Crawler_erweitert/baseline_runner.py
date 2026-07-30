@@ -23,9 +23,16 @@ Szenario-Format (JSON-Array):
         "label": "Musterstadt",
         "seed_url": "https://www.musterstadt.de",
         "max_pages": 50,
-        "reference_corpus_size": 12
+        "reference_corpus_size": 12,
+        "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/musterstadt.json"
       }
     ]
+
+Goldstandard (optional):
+    Wenn 'goldstandard_path' gesetzt ist und die Datei existiert, wird
+    Recall und F1 automatisch gegen den annotierten Referenzkorpus berechnet.
+    Ansonsten wird 'reference_corpus_size' als Fallback verwendet (nur Zahl).
+    Goldstandard-Dateien liegen unter Bachelor_Crawler_erweitert/goldstandard/.
 
 BFS-Modus:
     Die BFS-Baseline verwendet denselben FocusedCrawler, jedoch mit:
@@ -37,6 +44,8 @@ BFS-Modus:
 Exportformat (JSON):
     Jedes Szenario enthaelt 'bfs' und 'focused' als EvaluationReport-Dicts
     sowie 'comparison'-Schluessel mit Delta-Werten fuer den direkten Vergleich.
+    Wenn ein Goldstandard vorhanden ist, enthaelt 'goldstandard_stats' die
+    Recall-Werte beider Modi gegen den annotierten Referenzkorpus.
 """
 from __future__ import annotations
 
@@ -61,6 +70,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .focused_crawler import FocusedCrawler
 from .evaluation import EvaluationReport
 from .config import DEFAULT_CONFIG
+from .reference_corpus import ReferenceCorpus
 
 
 # ---------------------------------------------------------------------------
@@ -78,9 +88,9 @@ class _SeedIgnoreRobotsCrawler(FocusedCrawler):
     def __init__(self, config: Optional[Dict] = None, run_id: Optional[str] = None) -> None:
         super().__init__(config=config, run_id=run_id)
         self._seed_fetched = False
+        self._visited_urls_log: List[str] = []  # fuer Goldstandard-Recall-Berechnung
 
     def _is_robots_allowed(self, url: str) -> bool:
-        """Seed-URL immer erlauben, danach normales robots.txt-Verhalten."""
         if not self._seed_fetched:
             return True
         if self._robots is None:
@@ -89,11 +99,10 @@ class _SeedIgnoreRobotsCrawler(FocusedCrawler):
 
     def crawl(self, start_url, max_pages=None, reference_corpus_size=None, ags=None):
         self._seed_fetched = False
-        # Monkey-patch: robots-check in der crawl()-Schleife uebersteuern
+        self._visited_urls_log = []
         _original_is_allowed = None
         if self._robots is not None:
             _original_is_allowed = self._robots.is_allowed
-
             crawler_self = self
 
             def _patched_is_allowed(url: str) -> bool:
@@ -105,12 +114,16 @@ class _SeedIgnoreRobotsCrawler(FocusedCrawler):
             self._robots.is_allowed = _patched_is_allowed
 
         try:
-            return super().crawl(
+            pages, report = super().crawl(
                 start_url=start_url,
                 max_pages=max_pages,
                 reference_corpus_size=reference_corpus_size,
                 ags=ags,
             )
+            # Besuchte URLs fuer spaetere Goldstandard-Auswertung sammeln
+            if pages:
+                self._visited_urls_log = [p.url for p in pages if hasattr(p, 'url')]
+            return pages, report
         finally:
             if _original_is_allowed is not None:
                 self._robots.is_allowed = _original_is_allowed
@@ -163,20 +176,47 @@ def _load_scenarios(path: Path) -> List[Dict[str, Any]]:
     return data
 
 
+def _load_corpus(goldstandard_path: Optional[str]) -> Optional[ReferenceCorpus]:
+    """
+    Laedt den Referenzkorpus aus einer JSON-Datei, wenn der Pfad gesetzt
+    und die Datei vorhanden ist. Gibt None zurueck wenn kein Goldstandard
+    verfuegbar ist (kein Fehler, nur Warnung).
+    """
+    if not goldstandard_path:
+        return None
+    p = Path(goldstandard_path)
+    if not p.exists():
+        print(f'  [GOLDSTANDARD] Datei nicht gefunden: {p} (Recall bleibt 0.0)')
+        return None
+    try:
+        corpus = ReferenceCorpus.from_json(str(p))
+        print(f'  [GOLDSTANDARD] Geladen: {corpus.domain} '
+              f'({corpus.total_relevant} relevante / {corpus.total_entries} gesamt)')
+        return corpus
+    except Exception as exc:
+        print(f'  [GOLDSTANDARD] Fehler beim Laden: {exc} (Recall bleibt 0.0)')
+        return None
+
+
 def _run_mode(
     seed_url: str,
     max_pages: int,
     reference_corpus_size: Optional[int],
     mode: str,
     run_id: str,
-) -> Tuple[EvaluationReport, float]:
+) -> Tuple[EvaluationReport, float, List[str]]:
+    """
+    Fuehrt einen Crawl-Lauf (BFS oder Focused) durch.
+
+    Returns:
+        (EvaluationReport, elapsed_seconds, visited_urls)
+    """
     crawler_config = {
         **DEFAULT_CONFIG,
         'max_pages': max_pages,
         'db_enabled': False,
         'llm_enabled': False,
         'js_rendering': False,
-        # robots_respect bleibt True - nur Seed-URL bekommt Sonderbehandlung
         'robots_respect': True,
     }
 
@@ -192,7 +232,39 @@ def _run_mode(
         reference_corpus_size=reference_corpus_size,
     )
     elapsed = round(time.time() - t0, 2)
-    return report, elapsed
+    visited_urls = getattr(crawler, '_visited_urls_log', [])
+    return report, elapsed, visited_urls
+
+
+def _apply_goldstandard(
+    report: EvaluationReport,
+    visited_urls: List[str],
+    corpus: Optional[ReferenceCorpus],
+) -> Dict[str, Any]:
+    """
+    Berechnet Recall und F1 gegen den Goldstandard und gibt
+    ein Dict mit den Ergebnissen zurueck.
+
+    Wenn kein Korpus vorhanden ist, werden Nullwerte zurueckgegeben.
+    """
+    if corpus is None or corpus.total_relevant == 0:
+        return {
+            'goldstandard_available': False,
+            'recall_vs_goldstandard': 0.0,
+            'f1_vs_goldstandard': 0.0,
+            'goldstandard_total_relevant': 0,
+        }
+
+    recall = corpus.compute_recall(visited_urls)
+    f1 = corpus.compute_f1(precision=report.harvest_rate, crawled_urls=visited_urls)
+    return {
+        'goldstandard_available': True,
+        'recall_vs_goldstandard': recall,
+        'f1_vs_goldstandard': f1,
+        'goldstandard_total_relevant': corpus.total_relevant,
+        'goldstandard_domain': corpus.domain,
+        'goldstandard_category_distribution': corpus.category_distribution(),
+    }
 
 
 def _compare(focused: EvaluationReport, bfs: EvaluationReport) -> Dict[str, Any]:
@@ -236,25 +308,35 @@ def _print_table(results: List[Dict[str, Any]]) -> None:
 
     for entry in results:
         label = entry['scenario_label']
+        has_gs = entry.get('bfs', {}).get('goldstandard', {}).get('goldstandard_available', False)
+
         for mode in ('bfs', 'focused'):
             r = entry[mode]['report']
             elapsed = entry[mode]['elapsed_seconds']
+            gs = entry[mode].get('goldstandard', {})
             tag = 'BFS' if mode == 'bfs' else 'Focused'
+
+            # Wenn Goldstandard vorhanden: echten Recall/F1 anzeigen
+            recall_display = gs.get('recall_vs_goldstandard', r['recall']) if has_gs else r['recall']
+            f1_display = gs.get('f1_vs_goldstandard', r['f1_score']) if has_gs else r['f1_score']
+
             print(
                 f"{label:<25} "
                 f"{tag:<10} "
                 f"{r['total_crawled']:>9} "
                 f"{r['total_relevant']:>9} "
                 f"{r['harvest_rate']:>7.4f} "
-                f"{r['recall']:>7.4f} "
-                f"{r['f1_score']:>7.4f} "
+                f"{recall_display:>7.4f} "
+                f"{f1_display:>7.4f} "
                 f"{elapsed:>8.1f}"
             )
+
+        gs_note = f" [Goldstandard: {entry['bfs']['goldstandard'].get('goldstandard_total_relevant', '?')} relevante Seiten]" if has_gs else " [kein Goldstandard]"
         cmp = entry['comparison']
         sign = '+' if cmp['harvest_rate_improvement_pct'] >= 0 else ''
         print(
             f"{'  -> Verbesserung HR':<35} "
-            f"{sign}{cmp['harvest_rate_improvement_pct']:.1f}%"
+            f"{sign}{cmp['harvest_rate_improvement_pct']:.1f}%{gs_note}"
         )
         print(sep)
 
@@ -282,14 +364,19 @@ def run_baseline(
         seed = scenario['seed_url']
         max_pages = int(scenario['max_pages'])
         ref_size = scenario.get('reference_corpus_size')
+        gs_path = scenario.get('goldstandard_path')
 
         print(f'[{i}/{len(scenarios)}] Szenario: {label}')
         print(f'  Seed-URL:            {seed}')
         print(f'  Max Seiten:          {max_pages}')
         print(f'  Referenzkorpus:      {ref_size if ref_size else "nicht gesetzt"}')
+        print(f'  Goldstandard:        {gs_path if gs_path else "nicht gesetzt"}')
+
+        # Goldstandard laden (optional)
+        corpus = _load_corpus(gs_path)
 
         print('  Modus BFS  ... ', end='', flush=True)
-        bfs_report, bfs_time = _run_mode(
+        bfs_report, bfs_time, bfs_urls = _run_mode(
             seed_url=seed,
             max_pages=max_pages,
             reference_corpus_size=ref_size,
@@ -299,7 +386,7 @@ def run_baseline(
         print(f'fertig ({bfs_time}s, HR={bfs_report.harvest_rate:.4f})')
 
         print('  Modus Focused ... ', end='', flush=True)
-        focused_report, focused_time = _run_mode(
+        focused_report, focused_time, focused_urls = _run_mode(
             seed_url=seed,
             max_pages=max_pages,
             reference_corpus_size=ref_size,
@@ -308,6 +395,16 @@ def run_baseline(
         )
         print(f'fertig ({focused_time}s, HR={focused_report.harvest_rate:.4f})')
 
+        # Goldstandard-Recall berechnen (falls vorhanden)
+        bfs_gs = _apply_goldstandard(bfs_report, bfs_urls, corpus)
+        focused_gs = _apply_goldstandard(focused_report, focused_urls, corpus)
+
+        if corpus and corpus.total_relevant > 0:
+            print(f'  Recall BFS:          {bfs_gs["recall_vs_goldstandard"]:.4f}  '
+                  f'F1: {bfs_gs["f1_vs_goldstandard"]:.4f}')
+            print(f'  Recall Focused:      {focused_gs["recall_vs_goldstandard"]:.4f}  '
+                  f'F1: {focused_gs["f1_vs_goldstandard"]:.4f}')
+
         comparison = _compare(focused_report, bfs_report)
 
         scenario_result = {
@@ -315,14 +412,17 @@ def run_baseline(
             'seed_url':              seed,
             'max_pages':             max_pages,
             'reference_corpus_size': ref_size,
+            'goldstandard_path':     gs_path,
             'run_timestamp':         datetime.now().isoformat(),
             'bfs': {
                 'report':          bfs_report.to_dict(),
                 'elapsed_seconds': bfs_time,
+                'goldstandard':    bfs_gs,
             },
             'focused': {
                 'report':          focused_report.to_dict(),
                 'elapsed_seconds': focused_time,
+                'goldstandard':    focused_gs,
             },
             'comparison': comparison,
         }
@@ -352,7 +452,7 @@ def _default_output_path() -> Path:
 
 def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(
-        description='Automatisierter BFS-vs-Focused Baseline-Runner (Kap. 6.1)',
+        description='Automatisierter BFS-vs-Focused Baseline-Runner mit Goldstandard-Recall (Kap. 6.1)',
     )
     parser.add_argument(
         '--scenarios',

@@ -4,6 +4,7 @@
     "seed_url": "https://www.leer.de",
     "max_pages": 60,
     "reference_corpus_size": 10,
+    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/leer.json",
     "notes": "Mittelgrosse Niedersachsen-Stadt (Ostfriesland); keine restriktive robots.txt, gute Linkdichte"
   },
   {
@@ -11,13 +12,15 @@
     "seed_url": "https://www.rotenburg-wuemme.de",
     "max_pages": 60,
     "reference_corpus_size": 8,
-    "notes": "Kreisstadt Rotenburg (Wuemme), Niedersachsen; ersetzt Stade (restriktive robots.txt); vergleichbare Groesse"
+    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/rotenburg.json",
+    "notes": "Kreisstadt Rotenburg (Wuemme), Niedersachsen"
   },
   {
     "label": "Barssel",
     "seed_url": "https://www.barssel.de",
     "max_pages": 50,
     "reference_corpus_size": 6,
-    "notes": "Kleinstadt Niedersachsen; gute Vergleichbarkeit mit Leer (aehnliche Groesse)"
+    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/barssel.json",
+    "notes": "Kleinstadt Niedersachsen"
   }
 ]
