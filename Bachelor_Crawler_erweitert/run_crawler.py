@@ -81,12 +81,16 @@ def run_all() -> None:
         logger.info('[%d/%d] %s – %s', idx, total, ort, url)
         try:
             crawler = FocusedCrawler(run_id=ags)
-            results, report = crawler.crawl(url, max_pages=max_pages)
+            results, report = crawler.crawl(
+                url,
+                max_pages=max_pages,
+                ags=ags,          # AGS → crawl_results.ags
+            )
             logger.info(
                 '  ✓ %s: %d Seiten, %d relevant (Harvest Rate: %.1f%%)',
                 ort,
                 report.total_crawled,
-                report.total_relevant,      # korrekter Attributname
+                report.total_relevant,
                 report.harvest_rate * 100,
             )
             _update_last_scanned(conn, ags)
