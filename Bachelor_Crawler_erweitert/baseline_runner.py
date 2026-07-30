@@ -11,9 +11,13 @@ Funktionsweise:
   3. Metriken beider Laeufe (Harvest Rate, Precision, Recall, F1, Laufzeit)
      werden in einer JSON-Datei gespeichert UND als Tabelle ausgegeben.
 
-Verwendung:
-    # Standardszenarien aus scenarios/baseline_scenarios.json:
+Verwendung (beide Varianten funktionieren):
+    # Als Modul (empfohlen):
+    cd D:\PycharmProjects\Bachelor_KI_Web_Crawler
     python -m Bachelor_Crawler_erweitert.baseline_runner
+
+    # Direkt als Script (PyCharm / python baseline_runner.py):
+    python Bachelor_Crawler_erweitert/baseline_runner.py
 
     # Eigene Szenariendatei:
     python -m Bachelor_Crawler_erweitert.baseline_runner --scenarios my_scenarios.json
@@ -44,10 +48,22 @@ Exportformat (JSON):
 """
 from __future__ import annotations
 
+# ---------------------------------------------------------------------------
+# Direkt-Aufruf Bootstrap
+# Ermoeglicht 'python baseline_runner.py' OHNE -m Flag (z.B. in PyCharm).
+# Wird nur aktiv wenn __package__ nicht gesetzt ist (= direkter Script-Aufruf).
+# ---------------------------------------------------------------------------
+import sys
+if __package__ is None or __package__ == '':
+    from pathlib import Path as _Path
+    _pkg_root = str(_Path(__file__).resolve().parent.parent)
+    if _pkg_root not in sys.path:
+        sys.path.insert(0, _pkg_root)
+    __package__ = 'Bachelor_Crawler_erweitert'
+
 import argparse
 import json
 import time
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -67,7 +83,7 @@ class _BFSCrawler(FocusedCrawler):
 
     Aenderungen gegenueber dem Focused-Modus:
       - priority_threshold = 999.0  ->  kein Link gilt als prioritaer
-      - _enqueue_bfs() haengt alle Links ans Ende der Queue (FIFO)
+      - _enqueue_scored_links() haengt alle Links ans Ende der Queue (FIFO)
 
     Alle anderen Komponenten (DSGVO, robots.txt, Relevanzklassifikation)
     bleiben unveraendert aktiv, damit der Vergleich methodisch sauber ist.
@@ -132,10 +148,8 @@ def _run_mode(
     crawler_config = {
         **DEFAULT_CONFIG,
         'max_pages': max_pages,
-        # DB und LLM im Evaluationslauf deaktivieren - reine Metrik-Messung
         'db_enabled': False,
         'llm_enabled': False,
-        # JS-Rendering optional: beschleunigt den Lauf deutlich
         'js_rendering': False,
     }
 
@@ -259,8 +273,7 @@ def run_baseline(
         print(f'  Max Seiten:          {max_pages}')
         print(f'  Referenzkorpus:      {ref_size if ref_size else "nicht gesetzt"}')
 
-        # -- BFS-Lauf
-        print(f'  Modus BFS  ... ', end='', flush=True)
+        print('  Modus BFS  ... ', end='', flush=True)
         bfs_report, bfs_time = _run_mode(
             seed_url=seed,
             max_pages=max_pages,
@@ -270,8 +283,7 @@ def run_baseline(
         )
         print(f'fertig ({bfs_time}s, HR={bfs_report.harvest_rate:.4f})')
 
-        # -- Focused-Lauf
-        print(f'  Modus Focused ... ', end='', flush=True)
+        print('  Modus Focused ... ', end='', flush=True)
         focused_report, focused_time = _run_mode(
             seed_url=seed,
             max_pages=max_pages,
@@ -301,7 +313,6 @@ def run_baseline(
         }
         all_results.append(scenario_result)
 
-    # Ausgabe schreiben
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, 'w', encoding='utf-8') as fh:
         json.dump(all_results, fh, indent=2, ensure_ascii=False)
