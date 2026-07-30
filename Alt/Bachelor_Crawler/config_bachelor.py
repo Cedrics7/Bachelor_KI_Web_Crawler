@@ -13,7 +13,7 @@ import sys
 import os
 
 # Bestehende CONFIG aus crawler_js als Basis importieren
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "crawler_js"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../..", "crawler_js"))
 try:
     from config_js import CONFIG as _BASE_CONFIG, IGNORIERE_PARAMS
 except ImportError:

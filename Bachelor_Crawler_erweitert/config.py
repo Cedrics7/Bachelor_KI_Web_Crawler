@@ -87,9 +87,9 @@ DATABASE_URL: str = _build_database_url()
 # ---------------------------------------------------------------
 # LLM-Zugang
 # ---------------------------------------------------------------
-OPENAI_API_KEY: str | None = os.getenv('OPENAI_API_KEY')
-OPENAI_BASE_URL: str       = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
-LLM_MODEL: str             = os.getenv('LLM_MODEL', 'gpt-4o-mini')
+OPENAI_API_KEY: str        = os.getenv('OPENAI_API_KEY')
+OPENAI_BASE_URL: str       = os.getenv('OPENAI_BASE_URL', 'https://llmapi.telekom.de/v1')
+LLM_MODEL: str             = os.getenv('LLM_MODEL', 'gpt-5.1')
 
 # ---------------------------------------------------------------
 # Crawler-Konfiguration (alle Parameter zentral hier)
@@ -113,7 +113,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'privacy_filter_pii':       _bool(os.getenv('CRAWLER_PRIVACY_FILTER_PII'), True),
 
     # JS-Rendering
-    'js_rendering':             _bool(os.getenv('CRAWLER_JS_RENDERING'), False),
+    'js_rendering':             _bool(os.getenv('CRAWLER_JS_RENDERING'), True),
     'js_min_chars':             _int(os.getenv('CRAWLER_JS_MIN_CHARS'), 500),
     'js_timeout':               _int(os.getenv('CRAWLER_JS_TIMEOUT'), 20),
     'js_wait_until':            os.getenv('CRAWLER_JS_WAIT_UNTIL', 'networkidle'),
@@ -125,7 +125,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'ram_warn_mb':              _int(os.getenv('CRAWLER_RAM_WARN_MB'), 1500),
 
     # Multi-Target-Lauf (run_crawler.py)
-    'max_targets':              _int(os.getenv('CRAWLER_MAX_TARGETS'), 0),     # 0 = alle
+    'max_targets':              _int(os.getenv('CRAWLER_MAX_TARGETS'), 1),     # 0 = alle
     'prio_region':              os.getenv('CRAWLER_PRIO_REGION', ''),          # z.B. 'Bayern'
     'sleep_between_targets':    _float(os.getenv('CRAWLER_SLEEP_BETWEEN_TARGETS'), 1.0),
 
@@ -133,13 +133,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'log_dir':                  os.getenv('CRAWLER_LOG_DIR', 'logs'),
 
     # LLM
-    'llm_enabled':              _bool(os.getenv('CRAWLER_LLM_ENABLED'), False),
+    'llm_enabled':              _bool(os.getenv('CRAWLER_LLM_ENABLED'), True),
     'llm_model':                LLM_MODEL,
-    'llm_max_tokens':           _int(os.getenv('CRAWLER_LLM_MAX_TOKENS'), 512),
+    'llm_max_tokens':           _int(os.getenv('CRAWLER_LLM_MAX_TOKENS'), 400000),
     'llm_temperature':          _float(os.getenv('CRAWLER_LLM_TEMPERATURE'), 0.0),
 
     # Datenbank
-    'db_enabled':               _bool(os.getenv('CRAWLER_DB_ENABLED'), False),
+    'db_enabled':               _bool(os.getenv('CRAWLER_DB_ENABLED'), True),
     'db_url':                   DATABASE_URL,
 }
 

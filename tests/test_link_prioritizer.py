@@ -11,8 +11,8 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from focused_crawler.domain_model import DomainModel
-from focused_crawler.link_prioritizer import LinkPrioritizer, ScoredLink
+from Alt.focused_crawler.domain_model import DomainModel
+from Alt.focused_crawler import LinkPrioritizer, ScoredLink
 
 
 @pytest.fixture

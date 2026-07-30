@@ -51,7 +51,7 @@ from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from urllib.parse import urljoin, urlparse
 
 # --- Pfad zu crawler_js setzen (Import-Kette erhalten) ---
-_CRAWLER_JS_PATH = os.path.join(os.path.dirname(__file__), "..", "crawler_js")
+_CRAWLER_JS_PATH = os.path.join(os.path.dirname(__file__), "../..", "crawler_js")
 sys.path.insert(0, _CRAWLER_JS_PATH)
 
 # --- Alle unveränderten Hilfsfunktionen aus crawler_js importieren ---

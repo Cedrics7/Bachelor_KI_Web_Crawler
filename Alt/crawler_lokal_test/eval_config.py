@@ -227,15 +227,15 @@ EVAL_CONFIG = {
     "manual_targets":          [{"ort": "Hamburg", "url": "https://www.hamburg.de"}],
 
     "max_targets":             3,
-    "max_subpages":            30,
-    "max_pdf_pages":           3,
+    "max_subpages":            50,
+    "max_pdf_pages":           5,
     "timeout_seconds":         10,
     "sleep_between_targets":   2,
     "sleep_between_models":    1,
     "min_end_datum":           str(date.today()),
 
     # Chunking
-    "chunk_size":              100_000,
+    "chunk_size":              5_000,
     "chunk_overlap":           5_000,
     "max_text_chars":          5_000_000,
 

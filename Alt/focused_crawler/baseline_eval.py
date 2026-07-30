@@ -192,7 +192,7 @@ class BFSCrawler:
             return None
         try:
             import sys, os
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "Bachelor_Crawler"))
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../..", "Bachelor_Crawler"))
             from robots_checker import RobotsChecker
             return RobotsChecker(user_agent=self.USER_AGENT)
         except ImportError:

@@ -171,7 +171,7 @@ playwright install chromium
 ### Basiscrawl
 
 ```python
-from focused_crawler import FocusedCrawler
+from Alt.focused_crawler import FocusedCrawler
 
 crawler = FocusedCrawler(config={
     "relevance_threshold": 0.15,
@@ -193,7 +193,7 @@ report.to_json()  # fuer Thesis-Dokumentation
 ### Evaluation mit Baseline-Vergleich
 
 ```python
-from focused_crawler import FocusedCrawler
+from Alt.focused_crawler import FocusedCrawler
 from baseline_eval import run_baseline_comparison
 
 # Baseline-Vergleich (BFS vs. Focused)

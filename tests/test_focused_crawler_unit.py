@@ -17,7 +17,7 @@ import httpx
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from focused_crawler.focused_crawler import FocusedCrawler, DEFAULT_CONFIG
+from Alt.focused_crawler import FocusedCrawler, DEFAULT_CONFIG
 
 
 # ---------------------------------------------------------------------------

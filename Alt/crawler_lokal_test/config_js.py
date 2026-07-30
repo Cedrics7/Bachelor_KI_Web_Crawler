@@ -122,9 +122,9 @@ PDF_PRIO_KEYWORDS = [
     "brueckensanierung", "brückensanierung", "leitungsbau",
 ]
 
-CONSOLE_LOG_FILE = "../crawler_console.log"
-SKIPPED_LOG_FILE = "../crawler_skipped_urls.log"
-COST_LOG_FILE    = "../crawler_telekom_kosten.log"
+CONSOLE_LOG_FILE = "../../crawler_console.log"
+SKIPPED_LOG_FILE = "../../crawler_skipped_urls.log"
+COST_LOG_FILE    = "../../crawler_telekom_kosten.log"
 
 TELEKOM_API_KEY = os.getenv("TELEKOM_LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
 if not TELEKOM_API_KEY:

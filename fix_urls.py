@@ -7,7 +7,7 @@ Ausführen mit: python fix_urls.py
 """
 from urllib.parse import urlparse, urljoin
 from datetime import date
-from crawler.database import get_db_connection
+from Alt.crawler import get_db_connection
 
 
 def fix_relative_urls():

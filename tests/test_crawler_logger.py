@@ -11,12 +11,11 @@ Fix v1.1:
 import json
 import os
 import sys
-from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from focused_crawler.crawler_logger import CrawlerLogger
+from Alt.focused_crawler import CrawlerLogger
 
 
 def make_logger(tmp_path, run_id="test_run"):

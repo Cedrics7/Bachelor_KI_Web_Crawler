@@ -69,7 +69,7 @@ def log_event(emoji: str, message: str):
 
 
 def write_history_log(event_type: str, message: str):
-    log_file = "../crawler_history.txt"
+    log_file = "../../crawler_history.txt"
     zeit = get_german_time()
     log_entry = f"[{zeit}] {event_type.upper()}: {message}\n"
     with open(log_file, "a", encoding="utf-8") as f:
@@ -86,7 +86,7 @@ def write_history_log(event_type: str, message: str):
 
 
 def reset_live_log_if_new_day():
-    status_file = "../crawler_live_status.json"
+    status_file = "../../crawler_live_status.json"
     heute_str   = datetime.now().strftime("%Y-%m-%d")
     if not os.path.exists(status_file):
         return
@@ -108,7 +108,7 @@ def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False
     Schreibt den aktuellen Crawl-Status in crawler_live_status.json.
     Keys identisch zum Original: 'aktueller_ort', 'hash_match'.
     """
-    status_file        = "../crawler_live_status.json"
+    status_file        = "../../crawler_live_status.json"
     heute_str          = datetime.now().strftime("%Y-%m-%d")
     gesamt_funde_heute = funde
     if os.path.exists(status_file):
@@ -130,7 +130,7 @@ def update_live_log(ort: str, status: str, funde: int = 0, gespart: bool = False
 
 
 def _heartbeat_worker():
-    status_file = "../crawler_live_status.json"
+    status_file = "../../crawler_live_status.json"
     while not _heartbeat_stop.is_set():
         try:
             if os.path.exists(status_file):
