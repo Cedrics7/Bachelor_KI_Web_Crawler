@@ -2,7 +2,7 @@
 Smoke-Test (End-to-End-Integration) fuer den FocusedCrawler.
 
 Verwendet einen httpx.MockTransport, sodass kein echter HTTP-Request noetig ist.
-Prüft, dass alle Kernkomponenten zusammenarbeiten:
+Prueft, dass alle Kernkomponenten zusammenarbeiten:
   - FocusedCrawler instanziiert sich ohne Fehler
   - crawl() gibt CrawlResult-Liste und EvaluationReport zurueck
   - Relevanzklassifikation laeuft durch
@@ -69,7 +69,6 @@ def _make_transport(url_map: dict) -> httpx.MockTransport:
     """Erstellt einen MockTransport der URL-Pfade auf Response-Bodies mappt."""
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
-        # robots.txt immer erlauben
         if path == '/robots.txt':
             return httpx.Response(200, content=ROBOTS_ALLOW_ALL, headers={'Content-Type': 'text/plain'})
         body = url_map.get(path, b'<html><body>Leer</body></html>')
@@ -83,7 +82,7 @@ def _make_crawler(transport: httpx.MockTransport, extra_config: dict | None = No
     config = {
         'max_pages': 5,
         'crawl_delay_default': 0.0,
-        'robots_respect': False,   # robots.txt offline mocken wir separat
+        'robots_respect': False,
         'llm_enabled': False,
         'db_enabled': False,
         'privacy_filter_pii': True,
@@ -94,7 +93,6 @@ def _make_crawler(transport: httpx.MockTransport, extra_config: dict | None = No
     if extra_config:
         config.update(extra_config)
     crawler = FocusedCrawler(config=config, run_id='smoke_test')
-    # HTTP-Client mit MockTransport ersetzen
     crawler._http_client_factory = lambda: _httpx.Client(
         transport=transport,
         follow_redirects=True,
@@ -114,7 +112,6 @@ class TestFocusedCrawlerSmoke:
     def _run_crawl(self, pages: dict, start: str = 'https://test.local/') -> tuple:
         transport = _make_transport(pages)
         crawler = _make_crawler(transport)
-        # Den internen httpx.Client mit Mock patchen
         import unittest.mock as mock
         with mock.patch('httpx.Client') as MockClient:
             mock_instance = MockClient.return_value.__enter__.return_value
@@ -155,10 +152,10 @@ class TestFocusedCrawlerSmoke:
         scores = [r.relevance.score for r in results]
         assert max(scores) > 0
 
-    def test_evaluation_report_total_pages(self):
-        """EvaluationReport zaehlt mind. 1 gecrawlte Seite."""
+    def test_evaluation_report_total_crawled(self):
+        """EvaluationReport zaehlt mind. 1 gecrawlte Seite (Attribut: total_crawled)."""
         results, report = self._run_crawl({'/': _RELEVANT_PAGE})
-        assert report.total_pages >= 1
+        assert report.total_crawled >= 1
 
     def test_privacy_pii_filter_removes_email(self):
         """E-Mail-Adressen werden aus dem gespeicherten Text entfernt."""
@@ -193,7 +190,7 @@ class TestFocusedCrawlerSmoke:
 
 
 # ---------------------------------------------------------------------------
-# Komponenten-Smoke-Tests (offline, keine Mocks nötig)
+# Komponenten-Smoke-Tests (offline, keine Mocks noetig)
 # ---------------------------------------------------------------------------
 
 class TestComponentSmoke:
@@ -212,7 +209,8 @@ class TestComponentSmoke:
 
     def test_relevance_classifier_returns_result(self):
         dm = DomainModel()
-        clf = RelevanceClassifier(dm, threshold=0.05)
+        # Korrekter Parameter-Name gemaess RelevanceClassifier.__init__: relevance_threshold
+        clf = RelevanceClassifier(dm, relevance_threshold=0.05)
         result = clf.classify(
             text='Glasfaser Breitband Infrastruktur Netzausbau',
             url='https://example.com/glasfaser'
