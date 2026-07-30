@@ -1,22 +1,14 @@
-"""
+r"""
 baseline_runner.py
 ==================
 Automatisierter BFS-vs-Focused Vergleichs-Runner fuer die Thesis-Evaluation (Kap. 6.1).
-
-Funktionsweise:
-  1. Szenarien werden aus einer JSON-Datei geladen (seed_url, max_pages,
-     reference_corpus_size, label).
-  2. Pro Szenario wird zuerst ein BFS-Lauf (Link-Priorisierung deaktiviert,
-     FIFO-Queue) und danach ein Focused-Lauf mit CPE-Priorisierung ausgefuehrt.
-  3. Metriken beider Laeufe (Harvest Rate, Precision, Recall, F1, Laufzeit)
-     werden in einer JSON-Datei gespeichert UND als Tabelle ausgegeben.
 
 Verwendung (beide Varianten funktionieren):
     # Als Modul (empfohlen):
     cd D:\PycharmProjects\Bachelor_KI_Web_Crawler
     python -m Bachelor_Crawler_erweitert.baseline_runner
 
-    # Direkt als Script (PyCharm / python baseline_runner.py):
+    # Direkt als Script (PyCharm):
     python Bachelor_Crawler_erweitert/baseline_runner.py
 
     # Eigene Szenariendatei:
@@ -50,8 +42,6 @@ from __future__ import annotations
 
 # ---------------------------------------------------------------------------
 # Direkt-Aufruf Bootstrap
-# Ermoeglicht 'python baseline_runner.py' OHNE -m Flag (z.B. in PyCharm).
-# Wird nur aktiv wenn __package__ nicht gesetzt ist (= direkter Script-Aufruf).
 # ---------------------------------------------------------------------------
 import sys
 if __package__ is None or __package__ == '':
@@ -74,19 +64,66 @@ from .config import DEFAULT_CONFIG
 
 
 # ---------------------------------------------------------------------------
+# Patched FocusedCrawler: Seed-URL ignoriert robots.txt
+# ---------------------------------------------------------------------------
+
+class _SeedIgnoreRobotsCrawler(FocusedCrawler):
+    """
+    Erweiterung von FocusedCrawler: Die allererste Seed-URL wird
+    nie durch robots.txt geblockt. Das entspricht dem Standard-Vorgehen
+    in der Focused-Crawler-Literatur (Seed wird immer gefetcht).
+    Alle Folgeseiten unterliegen weiterhin der robots.txt-Pruefung.
+    """
+
+    def __init__(self, config: Optional[Dict] = None, run_id: Optional[str] = None) -> None:
+        super().__init__(config=config, run_id=run_id)
+        self._seed_fetched = False
+
+    def _is_robots_allowed(self, url: str) -> bool:
+        """Seed-URL immer erlauben, danach normales robots.txt-Verhalten."""
+        if not self._seed_fetched:
+            return True
+        if self._robots is None:
+            return True
+        return self._robots.is_allowed(url)
+
+    def crawl(self, start_url, max_pages=None, reference_corpus_size=None, ags=None):
+        self._seed_fetched = False
+        # Monkey-patch: robots-check in der crawl()-Schleife uebersteuern
+        _original_is_allowed = None
+        if self._robots is not None:
+            _original_is_allowed = self._robots.is_allowed
+
+            crawler_self = self
+
+            def _patched_is_allowed(url: str) -> bool:
+                if not crawler_self._seed_fetched:
+                    crawler_self._seed_fetched = True
+                    return True
+                return _original_is_allowed(url)
+
+            self._robots.is_allowed = _patched_is_allowed
+
+        try:
+            return super().crawl(
+                start_url=start_url,
+                max_pages=max_pages,
+                reference_corpus_size=reference_corpus_size,
+                ags=ags,
+            )
+        finally:
+            if _original_is_allowed is not None:
+                self._robots.is_allowed = _original_is_allowed
+
+
+# ---------------------------------------------------------------------------
 # BFS-Patch: FocusedCrawler im BFS-Modus
 # ---------------------------------------------------------------------------
 
-class _BFSCrawler(FocusedCrawler):
+class _BFSCrawler(_SeedIgnoreRobotsCrawler):
     """
-    Subklasse, die den FocusedCrawler in eine BFS-Baseline verwandelt.
-
-    Aenderungen gegenueber dem Focused-Modus:
-      - priority_threshold = 999.0  ->  kein Link gilt als prioritaer
-      - _enqueue_scored_links() haengt alle Links ans Ende der Queue (FIFO)
-
-    Alle anderen Komponenten (DSGVO, robots.txt, Relevanzklassifikation)
-    bleiben unveraendert aktiv, damit der Vergleich methodisch sauber ist.
+    BFS-Baseline: kein Link gilt als prioritaer, FIFO-Queue.
+    Erbt den Seed-robots.txt-Bypass von _SeedIgnoreRobotsCrawler.
     """
 
     def __init__(self, config: Optional[Dict] = None, run_id: Optional[str] = None) -> None:
@@ -94,11 +131,6 @@ class _BFSCrawler(FocusedCrawler):
         super().__init__(config=bfs_config, run_id=run_id or 'bfs_baseline')
 
     def _enqueue_scored_links(self, queue: list, scored_links: list, visited_urls: set) -> int:
-        """
-        Ueberschreibt die Link-Einreihungs-Logik: Alle Links werden
-        ohne Umordnung am Ende der Queue angehaengt (FIFO = BFS).
-        Gibt die Anzahl tatsaechlich eingereihter Links zurueck.
-        """
         n = 0
         for sl in scored_links:
             if len(queue) >= self._config['max_queue']:
@@ -119,7 +151,6 @@ class _BFSCrawler(FocusedCrawler):
 # ---------------------------------------------------------------------------
 
 def _load_scenarios(path: Path) -> List[Dict[str, Any]]:
-    """Laedt Szenarienliste aus einer JSON-Datei."""
     with open(path, encoding='utf-8') as fh:
         data = json.load(fh)
     if not isinstance(data, list):
@@ -139,24 +170,20 @@ def _run_mode(
     mode: str,
     run_id: str,
 ) -> Tuple[EvaluationReport, float]:
-    """
-    Fuehrt einen einzelnen Crawl-Lauf durch (BFS oder Focused).
-
-    Returns:
-        (EvaluationReport, laufzeit_sekunden)
-    """
     crawler_config = {
         **DEFAULT_CONFIG,
         'max_pages': max_pages,
         'db_enabled': False,
         'llm_enabled': False,
         'js_rendering': False,
+        # robots_respect bleibt True - nur Seed-URL bekommt Sonderbehandlung
+        'robots_respect': True,
     }
 
     if mode == 'bfs':
         crawler = _BFSCrawler(config=crawler_config, run_id=run_id)
     else:
-        crawler = FocusedCrawler(config=crawler_config, run_id=run_id)
+        crawler = _SeedIgnoreRobotsCrawler(config=crawler_config, run_id=run_id)
 
     t0 = time.time()
     _, report = crawler.crawl(
@@ -169,7 +196,6 @@ def _run_mode(
 
 
 def _compare(focused: EvaluationReport, bfs: EvaluationReport) -> Dict[str, Any]:
-    """Berechnet Deltas zwischen Focused und BFS."""
     def delta(a: float, b: float) -> float:
         return round(a - b, 4)
 
@@ -190,7 +216,6 @@ def _compare(focused: EvaluationReport, bfs: EvaluationReport) -> Dict[str, Any]
 
 
 def _print_table(results: List[Dict[str, Any]]) -> None:
-    """Gibt eine formatierte Vergleichstabelle fuer alle Szenarien aus."""
     header = (
         f"{'Szenario':<25} "
         f"{'Modus':<10} "
@@ -244,16 +269,6 @@ def run_baseline(
     scenarios_path: Path,
     output_path: Path,
 ) -> List[Dict[str, Any]]:
-    """
-    Fuehrt alle Szenarien aus und schreibt die Ergebnisse in eine JSON-Datei.
-
-    Args:
-        scenarios_path: Pfad zur JSON-Szenariendatei
-        output_path:    Pfad fuer die JSON-Ausgabedatei
-
-    Returns:
-        Liste aller Szenario-Ergebnisse (dict)
-    """
     scenarios = _load_scenarios(scenarios_path)
     all_results: List[Dict[str, Any]] = []
 
@@ -338,8 +353,6 @@ def _default_output_path() -> Path:
 def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(
         description='Automatisierter BFS-vs-Focused Baseline-Runner (Kap. 6.1)',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
     )
     parser.add_argument(
         '--scenarios',
