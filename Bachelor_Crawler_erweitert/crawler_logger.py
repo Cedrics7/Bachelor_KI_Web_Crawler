@@ -99,7 +99,12 @@ class CrawlerLogger:
         self._write('DEBUG', event, message, **data)
 
     def error(self, event: str, message: str = '', **data):
-        self._write('ERROR', 'ERROR', message, event=event, **data)
+        # FIX: 'event' darf nicht als Keyword-Argument an _write() übergeben werden,
+        # da _write() 'event' bereits als Positional-Parameter hat.
+        # Wir nutzen die EVENT-Konstante 'ERROR' als event-Wert für _write()
+        # und übergeben den ursprünglichen event-Namen sicher über **data.
+        data['event'] = event
+        self._write('ERROR', 'ERROR', message, **data)
 
     def crawl_step(self, url: str, step: str, **data):
         self._write('INFO', f'CRAWL.{step}', url=url, **data)
