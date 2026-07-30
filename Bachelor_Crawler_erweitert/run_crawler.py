@@ -9,16 +9,72 @@ Alle Parameter kommen aus DEFAULT_CONFIG (config.py / .env):
     CRAWLER_MAX_TARGETS=100           # wie viele Kommunen pro Lauf (0 = alle)
     CRAWLER_PRIO_REGION=Bayern        # optional: Region zuerst
     CRAWLER_SLEEP_BETWEEN_TARGETS=1   # Pause zwischen Kommunen in Sekunden
+
+DB-Status (crawler_status-Tabelle) und Heartbeat werden exakt wie in
+crawler_js/crawler_telekom.py geführt.
 """
 from __future__ import annotations
 import logging
 import time
+from datetime import datetime
 
 from Bachelor_Crawler_erweitert.focused_crawler import FocusedCrawler
 from Bachelor_Crawler_erweitert.config import DEFAULT_CONFIG
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================
+# DB-Status-Hilfsfunktionen (identisch zu crawler_js)
+# ============================================================
+
+def _db_set_status(conn, cursor, status: str, current_target: str = None) -> None:
+    """
+    Aktualisiert die crawler_status-Tabelle.
+    Zeile wird per ON CONFLICT DO NOTHING sichergestellt.
+    """
+    now     = datetime.now()
+    timeout = DEFAULT_CONFIG.get('heartbeat_timeout_seconds', 60)
+
+    cursor.execute("""
+        INSERT INTO crawler_status (status, heartbeat_timeout_seconds)
+        VALUES ('inaktiv', %s)
+        ON CONFLICT DO NOTHING
+    """, (timeout,))
+
+    if status == 'aktiv':
+        cursor.execute("""
+            UPDATE crawler_status SET
+                status                    = 'aktiv',
+                started_at                = %s,
+                stopped_at                = NULL,
+                last_heartbeat            = %s,
+                current_target            = %s,
+                heartbeat_timeout_seconds = %s
+        """, (now, now, current_target, timeout))
+    else:
+        cursor.execute("""
+            UPDATE crawler_status SET
+                status         = 'inaktiv',
+                stopped_at     = %s,
+                current_target = NULL
+        """, (now,))
+    conn.commit()
+
+
+def _db_heartbeat(conn, cursor, current_target: str = None) -> None:
+    """Aktualisiert Heartbeat-Timestamp und aktuelles Ziel."""
+    cursor.execute("""
+        UPDATE crawler_status SET
+            last_heartbeat = %s,
+            current_target = %s
+    """, (datetime.now(), current_target))
+    conn.commit()
+
+
+# ============================================================
+# Hilfsfunktionen
+# ============================================================
 
 def _fetch_targets(conn, max_targets: int, prio_region: str) -> list:
     with conn.cursor() as cur:
@@ -54,6 +110,10 @@ def _update_last_scanned(conn, ags: str) -> None:
     conn.commit()
 
 
+# ============================================================
+# Haupt-Loop
+# ============================================================
+
 def run_all() -> None:
     if not DEFAULT_CONFIG.get('db_enabled'):
         logger.error(
@@ -69,6 +129,7 @@ def run_all() -> None:
 
     import psycopg2
     conn    = psycopg2.connect(DEFAULT_CONFIG['db_url'])
+    cursor  = conn.cursor()
     targets = _fetch_targets(conn, max_targets, prio_region)
     total   = len(targets)
 
@@ -77,29 +138,72 @@ def run_all() -> None:
         total, max_pages, prio_region or '(keine)'
     )
 
-    for idx, (ags, url, ort) in enumerate(targets, start=1):
-        logger.info('[%d/%d] %s – %s', idx, total, ort, url)
+    # --- DB-Status: Crawler startet ---
+    try:
+        _db_set_status(conn, cursor, 'aktiv')
+        logger.info('🟢 Live-Status in DB: aktiv')
+    except Exception as e:
+        logger.warning('DB-Status (aktiv) konnte nicht gesetzt werden: %s', e)
         try:
-            crawler = FocusedCrawler(run_id=ags)
-            results, report = crawler.crawl(
-                url,
-                max_pages=max_pages,
-                ags=ags,          # AGS → crawl_results.ags
-            )
-            logger.info(
-                '  ✓ %s: %d Seiten, %d relevant (Harvest Rate: %.1f%%)',
-                ort,
-                report.total_crawled,
-                report.total_relevant,
-                report.harvest_rate * 100,
-            )
-            _update_last_scanned(conn, ags)
+            conn.rollback()
+        except Exception:
+            pass
+
+    try:
+        for idx, (ags, url, ort) in enumerate(targets, start=1):
+            logger.info('[%d/%d] %s – %s', idx, total, ort, url)
+
+            # --- DB-Heartbeat: neues Target ---
+            try:
+                _db_heartbeat(conn, cursor, current_target=ort)
+            except Exception as e:
+                logger.warning('Heartbeat fehlgeschlagen für %s: %s', ort, e)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+            try:
+                crawler = FocusedCrawler(run_id=ags)
+                results, report = crawler.crawl(
+                    url,
+                    max_pages=max_pages,
+                    ags=ags,
+                )
+                logger.info(
+                    '  ✓ %s: %d Seiten, %d relevant (Harvest Rate: %.1f%%)',
+                    ort,
+                    report.total_crawled,
+                    report.total_relevant,
+                    report.harvest_rate * 100,
+                )
+                _update_last_scanned(conn, ags)
+            except Exception as e:
+                logger.error('  ✗ Fehler bei %s (%s): %s', ort, url, e)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+            time.sleep(sleep_sec)
+
+    finally:
+        # --- DB-Status: Crawler beendet ---
+        try:
+            _db_set_status(conn, cursor, 'inaktiv')
+            logger.info('🔴 Live-Status in DB: inaktiv')
         except Exception as e:
-            logger.error('  ✗ Fehler bei %s (%s): %s', ort, url, e)
+            logger.warning('DB-Status (inaktiv) konnte nicht gesetzt werden: %s', e)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
 
-        time.sleep(sleep_sec)
-
-    conn.close()
     logger.info('=== Fertig: %d/%d Kommunen verarbeitet ===', total, total)
 
 

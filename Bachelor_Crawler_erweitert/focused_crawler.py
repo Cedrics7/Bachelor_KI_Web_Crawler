@@ -41,12 +41,23 @@ _SKIP_EXTENSIONS = {
     '.xls', '.xlsx', '.doc', '.docx', '.ppt', '.pptx',
 }
 
+# URL-Patterns die leere Kategorieseiten sind (kein echter Seiteninhalt)
+_SKIP_URL_PATTERNS = re.compile(
+    r'(jsf=jet-engine|tax=adressen-kategorie|stadtplan-query)',
+    re.IGNORECASE,
+)
+
 _PDF_URL_RE = re.compile(r'https?://[^\s"<>]+\.pdf', re.IGNORECASE)
 
 
 def _is_skip_url(url: str) -> bool:
     path = urlparse(url).path.lower()
-    return any(path.endswith(ext) for ext in _SKIP_EXTENSIONS)
+    if any(path.endswith(ext) for ext in _SKIP_EXTENSIONS):
+        return True
+    # Ortsplan-Redirect-Seiten ohne echten Inhalt überspringen
+    if _SKIP_URL_PATTERNS.search(url):
+        return True
+    return False
 
 
 @dataclass
@@ -97,7 +108,7 @@ class FocusedCrawler:
                 api_key=self._config.get('llm_api_key') or OPENAI_API_KEY,
                 base_url=self._config.get('llm_base_url') or OPENAI_BASE_URL,
                 model=self._config.get('llm_model', 'gpt-4o-mini'),
-                max_tokens=self._config.get('llm_max_tokens', 512),
+                max_tokens=self._config.get('llm_max_tokens', 4096),
                 temperature=self._config.get('llm_temperature', 0.0),
             )
 
@@ -139,7 +150,7 @@ class FocusedCrawler:
             while queue and len(results) < limit:
                 curr_url, anchor, ctx = queue.pop(0)
 
-                # --- Skip: Bilder / Medien
+                # --- Skip: Bilder / Medien / leere Kategorieseiten (Ortsplan)
                 if _is_skip_url(curr_url):
                     evaluator.add_skipped()
                     continue
@@ -312,11 +323,13 @@ class FocusedCrawler:
                 if self._llm and self._llm.available and relevance.is_relevant:
                     llm_result = self._llm.analyse(text, url=curr_url)
                     if llm_result:
+                        massnahmen_count = len(llm_result.get('massnahmen', []))
                         self._logger.info(
                             'LLM', 'Analyse',
                             url=curr_url,
                             relevant=llm_result.get('relevant'),
                             confidence=llm_result.get('confidence'),
+                            massnahmen=massnahmen_count,
                         )
 
                 result = CrawlResult(
@@ -329,18 +342,19 @@ class FocusedCrawler:
 
                 # --- DB-Speicherung:
                 # Gate 1: TF-IDF/BCW relevance.is_relevant == True
-                # Gate 2: LLM bestätigt relevant=True
+                # Gate 2: LLM hat mindestens eine Maßnahme gefunden
                 #         (falls kein LLM aktiv, reicht Gate 1 allein)
                 if self._db and relevance.is_relevant:
                     llm_confirmed = (
-                        llm_result is None  # kein LLM konfiguriert -> nur TF-IDF reicht
+                        llm_result is None  # kein LLM → nur TF-IDF reicht
                         or llm_result.get('relevant', False) is True
                     )
                     if llm_confirmed:
                         # Rohlog in crawl_results_bachelor
                         self._db.save_result(self._run_id, result)
-                        # LLM-zertifizierter Fund in crawl_results (wie crawler_js)
-                        if llm_result is not None:
+                        # LLM-Maßnahmen in crawl_results (wie crawler_js)
+                        # Nur wenn wirklich Maßnahmen gefunden wurden
+                        if llm_result is not None and len(llm_result.get('massnahmen', [])) > 0:
                             self._db.save_llm_result(
                                 ags=ags,
                                 result=result,
