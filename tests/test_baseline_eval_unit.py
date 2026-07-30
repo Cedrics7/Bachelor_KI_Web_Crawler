@@ -11,14 +11,13 @@ import json
 import sys
 import os
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from focused_crawler.baseline_eval import BaselineComparison
-from focused_crawler.evaluation import EvaluationReport
-from focused_crawler.crawler_logger import CrawlerLogger
+from Alt.focused_crawler.baseline_eval import BaselineComparison
+from Alt.focused_crawler.evaluation import EvaluationReport
+from Alt.focused_crawler.crawler_logger import CrawlerLogger
 
 
 def make_report(

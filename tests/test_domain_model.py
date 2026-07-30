@@ -18,7 +18,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from focused_crawler.domain_model import DomainModel
+from Alt.focused_crawler.domain_model import DomainModel
 
 
 @pytest.mark.unit

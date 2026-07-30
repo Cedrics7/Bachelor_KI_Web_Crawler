@@ -62,9 +62,9 @@ CONFIG["crawl_delay_max"]     = 10.0   # Max. robots.txt-Delay (s)
 ## Verwendung
 
 ```python
-from Bachelor_Crawler import get_subpages
+from Alt.Bachelor_Crawler import get_subpages
 
-html_collected, pdf_collected, skipped_urls, status_log, page_hashes = \
+html_collected, pdf_collected, skipped_urls, status_log, page_hashes =
     get_subpages("https://www.musterstadt.de", max_pages=100)
 ```
 

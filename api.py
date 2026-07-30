@@ -7,11 +7,10 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from datetime import datetime, date
 import os
-import json
 import mimetypes
 import uvicorn
 
-from crawler.database import get_db_connection
+from Alt.Bachelor_KI_Web_Crawler.crawler.database import get_db_connection
 
 mimetypes.add_type('application/javascript', '.js')
 mimetypes.add_type('text/css', '.css')

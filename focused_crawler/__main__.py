@@ -7,9 +7,9 @@ Aufruf:
 """
 import argparse
 import sys
-from focused_crawler.focused_crawler import FocusedCrawler
-from focused_crawler.crawler_logger import CrawlerLogger
-from focused_crawler.evaluation import CrawlEvaluator
+from Alt.focused_crawler.focused_crawler import FocusedCrawler
+from Alt.focused_crawler.crawler_logger import CrawlerLogger
+from Alt.focused_crawler.evaluation import CrawlEvaluator
 
 
 def main():

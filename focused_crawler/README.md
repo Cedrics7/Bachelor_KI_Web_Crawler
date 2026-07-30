@@ -172,7 +172,7 @@ python -m focused_crawler.baseline_eval \
 ### Python-API
 
 ```python
-from focused_crawler.baseline_eval import run_baseline_evaluation
+from Alt.focused_crawler import run_baseline_evaluation
 
 result = run_baseline_evaluation(
     start_url="https://www.musterstadt.de",

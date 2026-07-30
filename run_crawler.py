@@ -18,7 +18,7 @@ import sys
 
 def run_focused(args: argparse.Namespace) -> None:
     """Startet den focused_crawler über seinen __main__-Einstieg."""
-    from focused_crawler.__main__ import main as focused_main  # type: ignore
+    from Alt.Bachelor_KI_Web_Crawler.focused_crawler.__main__ import main as focused_main  # type: ignore
 
     # Argumente für focused_crawler in sys.argv schreiben, damit argparse
     # im Untermodul korrekt parst.

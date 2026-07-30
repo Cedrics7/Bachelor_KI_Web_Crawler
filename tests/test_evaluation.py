@@ -15,9 +15,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from focused_crawler.domain_model import DomainModel
-from focused_crawler.relevance_classifier import RelevanceClassifier, RelevanceResult
-from focused_crawler.evaluation import CrawlEvaluator, EvaluationReport
+from Alt.focused_crawler.evaluation import CrawlEvaluator
 
 
 def make_result(score: float, threshold: float = 0.15):
