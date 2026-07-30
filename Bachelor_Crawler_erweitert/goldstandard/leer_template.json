@@ -1,0 +1,46 @@
+{
+  "domain": "leer.de",
+  "annotator": "DEIN_NAME",
+  "date": "YYYY-MM-DD",
+  "total_entries": 0,
+  "total_relevant": 0,
+  "_anleitung": [
+    "Fuege hier manuell annotierte URLs ein.",
+    "relevant: true = Seite enthaelt kommunale Projektinfos (Bauen, Umwelt, Wirtschaft, Infrastruktur, Verwaltung)",
+    "relevant: false = Seite ist irrelevant (Impressum, Kontakt, Veranstaltungen ohne Projektbezug etc.)",
+    "kategorie: eine aus [bauen, umwelt, wirtschaft, infrastruktur, verwaltung] oder leer lassen bei irrelevant",
+    "Ziel: mind. 40-60 annotierte Seiten fuer belastbare Recall-Berechnung"
+  ],
+  "entries": [
+    {
+      "url": "https://www.leer.de/Wirtschaft-Stadtentwicklung/Stadtentwicklung/Kommunale-Waermeplanung",
+      "relevant": true,
+      "kategorie": "umwelt",
+      "notiz": "Kommunale Waermeplanung – klar relevant"
+    },
+    {
+      "url": "https://www.leer.de/Klimaschutz-Klimaanpassung/Klimaschutz",
+      "relevant": true,
+      "kategorie": "umwelt",
+      "notiz": "Klimaschutzseite der Stadt Leer"
+    },
+    {
+      "url": "https://www.leer.de/Klimaschutz-Klimaanpassung/Klimaanpassung",
+      "relevant": true,
+      "kategorie": "umwelt",
+      "notiz": "Klimaanpassungsseite"
+    },
+    {
+      "url": "https://www.leer.de/Schnellnavigation/Datenschutz",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "Datenschutzseite – nicht relevant"
+    },
+    {
+      "url": "https://www.leer.de/Schnellnavigation/Impressum",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "Impressum – nicht relevant"
+    }
+  ]
+}

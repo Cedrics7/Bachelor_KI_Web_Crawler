@@ -1,0 +1,14 @@
+{
+  "domain": "barssel.de",
+  "annotator": "DEIN_NAME",
+  "date": "YYYY-MM-DD",
+  "total_entries": 0,
+  "total_relevant": 0,
+  "_anleitung": [
+    "Fuege hier manuell annotierte URLs fuer barssel.de ein.",
+    "relevant: true = Seite enthaelt kommunale Projektinfos",
+    "relevant: false = Seite ist irrelevant",
+    "kategorie: eine aus [bauen, umwelt, wirtschaft, infrastruktur, verwaltung]"
+  ],
+  "entries": []
+}
