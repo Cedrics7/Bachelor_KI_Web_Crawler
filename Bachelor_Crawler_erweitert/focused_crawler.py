@@ -214,7 +214,7 @@ class FocusedCrawler:
                 if resp.status_code != 200:
                     continue
 
-                # --- Hash-Duplikat
+                # --- Hash-Duplikat (innerhalb eines Laufs)
                 is_pdf = curr_url.lower().endswith('.pdf')
                 content_hash = hashlib.sha256(resp.content).hexdigest()
                 if content_hash in visited_hashes:
@@ -262,7 +262,6 @@ class FocusedCrawler:
                             n_prio += 1
                         else:
                             queue.append(entry)
-                        # CPE-Score pro Link loggen (sl.cpe_score ist das korrekte Attribut)
                         self._logger.cpe_score(
                             url=sl.url,
                             cpe_score=sl.cpe_score,
@@ -305,9 +304,7 @@ class FocusedCrawler:
                     is_pdf=is_pdf,
                 )
 
-                # --- LLM-Analyse (optional, nur für relevante Seiten)
-                # FIX #1: relevance.is_relevant als Gate verwenden –
-                # Seiten mit score=0.0/relevant=False werden nicht ans LLM geschickt.
+                # --- LLM-Analyse (nur für Seiten die TF-IDF/BCW als relevant einstuft)
                 llm_result = None
                 if self._llm and self._llm.available and relevance.is_relevant:
                     llm_result = self._llm.analyse(text, url=curr_url)
@@ -327,8 +324,24 @@ class FocusedCrawler:
                 results.append(result)
                 evaluator.add_result(relevance, is_pdf=is_pdf)
 
-                if self._db:
-                    self._db.save_result(self._run_id, result)
+                # --- DB-Speicherung:
+                # FIX #4: Nur speichern wenn BEIDE Gates grün sind:
+                #   Gate 1: TF-IDF/BCW relevance.is_relevant == True
+                #   Gate 2: LLM bestätigt relevant=True
+                #           (falls kein LLM aktiv, reicht Gate 1 allein)
+                if self._db and relevance.is_relevant:
+                    llm_confirmed = (
+                        llm_result is None  # kein LLM konfiguriert -> nur TF-IDF reicht
+                        or llm_result.get('relevant', False) is True
+                    )
+                    if llm_confirmed:
+                        self._db.save_result(self._run_id, result)
+                    else:
+                        self._logger.info(
+                            'DB', 'SKIP (LLM=False)',
+                            url=curr_url,
+                            llm_confidence=llm_result.get('confidence') if llm_result else None,
+                        )
 
         report = evaluator.get_report()
         self._logger.evaluation(report.to_dict(), label='FOCUSED')
