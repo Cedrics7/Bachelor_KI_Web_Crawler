@@ -1,0 +1,35 @@
+{
+  "_beschreibung": "Reproduzierbare Seed-Konfiguration fuer Thesis-Evaluation (Kap. 4/6). random_seed=42 garantiert bei jedem Lauf dieselbe Domain-Auswahl.",
+  "random_seed": 42,
+  "csv_path": "municipalities_final_master.csv",
+  "filter_bundesland": "Niedersachsen",
+  "min_einwohner": 0,
+  "max_domains": 10,
+  "default_max_pages": 60,
+  "manual_overrides": [
+    {
+      "name": "Leer",
+      "url": "https://www.leer.de",
+      "ags": "03452012",
+      "bundesland": "Niedersachsen",
+      "einwohner": 34000,
+      "max_pages": 60
+    },
+    {
+      "name": "Rotenburg (Wuemme)",
+      "url": "https://www.rotenburg-wuemme.de",
+      "ags": "03357023",
+      "bundesland": "Niedersachsen",
+      "einwohner": 21000,
+      "max_pages": 60
+    },
+    {
+      "name": "Barssel",
+      "url": "https://www.barssel.de",
+      "ags": "03461003",
+      "bundesland": "Niedersachsen",
+      "einwohner": 12000,
+      "max_pages": 50
+    }
+  ]
+}
