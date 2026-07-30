@@ -34,7 +34,9 @@ class LLMClient:
         temperature: float = 0.0,
     ) -> None:
         self._model = model
-        self._max_tokens = max_tokens
+        # FIX #2: max_tokens auf das API-Maximum von 128000 clampen.
+        # Verhindert den Fehler 'max_tokens is too large: 400000'.
+        self._max_tokens = max(1, min(int(max_tokens), 128_000))
         self._temperature = temperature
         self._client = None
 
@@ -53,6 +55,10 @@ class LLMClient:
     def available(self) -> bool:
         return self._client is not None
 
+    @property
+    def model(self) -> str:
+        return self._model
+
     def analyse(self, text: str, url: str = '') -> Optional[dict]:
         """
         Sendet einen Textausschnitt an das LLM und gibt das geparste JSON zurück.
@@ -66,17 +72,28 @@ class LLMClient:
         if not snippet:
             return None
 
+        # FIX #3: Modellabhängige temperature-Behandlung.
+        # GPT-5 / GPT-5-mini akzeptieren kein temperature-Parameter.
+        # GPT-5.1 benötigt reasoning_effort='none', damit temperature gesetzt werden darf.
+        payload: dict = {
+            'model': self._model,
+            'max_tokens': self._max_tokens,
+            'messages': [
+                {'role': 'system', 'content': _SYSTEM_PROMPT},
+                {'role': 'user', 'content': f'URL: {url}\n\nText:\n{snippet}'},
+            ],
+        }
+        if self._model.startswith('gpt-5.1'):
+            payload['reasoning_effort'] = 'none'
+            payload['temperature'] = self._temperature
+        elif not self._model.startswith('gpt-5'):
+            # Alle anderen Modelle (gpt-4o, gpt-4o-mini, Ollama, etc.)
+            payload['temperature'] = self._temperature
+        # reines gpt-5 / gpt-5-mini: temperature weglassen
+
         try:
             import json
-            response = self._client.chat.completions.create(
-                model=self._model,
-                max_tokens=self._max_tokens,
-                temperature=self._temperature,
-                messages=[
-                    {'role': 'system', 'content': _SYSTEM_PROMPT},
-                    {'role': 'user', 'content': f'URL: {url}\n\nText:\n{snippet}'},
-                ],
-            )
+            response = self._client.chat.completions.create(**payload)
             raw = response.choices[0].message.content.strip()
             # JSON aus Antwort extrahieren (robust gegen Markdown-Code-Blöcke)
             if raw.startswith('```'):
