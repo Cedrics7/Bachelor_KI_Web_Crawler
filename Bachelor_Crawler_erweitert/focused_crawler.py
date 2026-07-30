@@ -8,6 +8,7 @@ import io
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse, urlunparse
 
@@ -113,6 +114,7 @@ class FocusedCrawler:
         start_url: str,
         max_pages: Optional[int] = None,
         reference_corpus_size: Optional[int] = None,
+        ags: Optional[str] = None,
     ) -> Tuple[List[CrawlResult], EvaluationReport]:
         limit = max_pages or self._config['max_pages']
         evaluator = CrawlEvaluator(
@@ -124,6 +126,7 @@ class FocusedCrawler:
         base_domain = urlparse(start_url).netloc
         effective_domain, effective_start_path = base_domain, ''
         first_request = True
+        crawl_start_time = datetime.now()
 
         self._logger.section(f'Crawl-Start: {start_url}')
 
@@ -325,17 +328,24 @@ class FocusedCrawler:
                 evaluator.add_result(relevance, is_pdf=is_pdf)
 
                 # --- DB-Speicherung:
-                # FIX #4: Nur speichern wenn BEIDE Gates grün sind:
-                #   Gate 1: TF-IDF/BCW relevance.is_relevant == True
-                #   Gate 2: LLM bestätigt relevant=True
-                #           (falls kein LLM aktiv, reicht Gate 1 allein)
+                # Gate 1: TF-IDF/BCW relevance.is_relevant == True
+                # Gate 2: LLM bestätigt relevant=True
+                #         (falls kein LLM aktiv, reicht Gate 1 allein)
                 if self._db and relevance.is_relevant:
                     llm_confirmed = (
                         llm_result is None  # kein LLM konfiguriert -> nur TF-IDF reicht
                         or llm_result.get('relevant', False) is True
                     )
                     if llm_confirmed:
+                        # Rohlog in crawl_results_bachelor
                         self._db.save_result(self._run_id, result)
+                        # LLM-zertifizierter Fund in crawl_results (wie crawler_js)
+                        if llm_result is not None:
+                            self._db.save_llm_result(
+                                ags=ags,
+                                result=result,
+                                start_time=crawl_start_time,
+                            )
                     else:
                         self._logger.info(
                             'DB', 'SKIP (LLM=False)',
