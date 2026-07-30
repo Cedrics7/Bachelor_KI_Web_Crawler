@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from Alt.focused_crawler import BaselineComparison
 from Alt.focused_crawler import EvaluationReport
 from Alt.focused_crawler import CrawlerLogger

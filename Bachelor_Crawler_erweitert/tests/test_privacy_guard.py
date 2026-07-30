@@ -1,17 +1,21 @@
 """
-Unit-Tests fuer privacy_guard.PrivacyGuard.
+Unit-Tests fuer Bachelor_Crawler_erweitert.privacy_guard.PrivacyGuard.
 DSGVO-Filterlogik: E-Mail, Telefon, IBAN, SVN, sensible URLs, Metadaten.
-Aufruf:  pytest Bachelor_Crawler_erweitert/tests/test_privacy_guard.py -v
 """
+import sys
+import os
+
 import pytest
 
-from ..privacy_guard import PrivacyGuard
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..', 'Bachelor_Crawler_erweitert'))
+from Bachelor_Crawler_erweitert.privacy_guard import PrivacyGuard
 
 
 class TestPrivacyGuardFilterText:
     def setup_method(self):
         self.guard = PrivacyGuard(log_removals=True)
 
+    # --- E-Mail -----------------------------------------------------------
     def test_email_is_removed(self):
         result = self.guard.filter_text('Kontakt: max.mustermann@example.de')
         assert '[E-MAIL ENTFERNT]' in result
@@ -26,6 +30,7 @@ class TestPrivacyGuardFilterText:
         result = self.guard.filter_text('Kein personenbezogenes Datum hier.')
         assert result == 'Kein personenbezogenes Datum hier.'
 
+    # --- Telefon ----------------------------------------------------------
     def test_german_phone_removed(self):
         result = self.guard.filter_text('Rufnummer: 040 123456789')
         assert '[TEL ENTFERNT]' in result
@@ -34,25 +39,31 @@ class TestPrivacyGuardFilterText:
         result = self.guard.filter_text('Tel: +49 30 12345678')
         assert '[TEL ENTFERNT]' in result
 
+    # --- IBAN -------------------------------------------------------------
     def test_iban_removed(self):
         result = self.guard.filter_text('IBAN: DE89 3704 0044 0532 0130 00')
         assert '[IBAN ENTFERNT]' in result
         assert 'DE89' not in result
 
+    # --- SVN --------------------------------------------------------------
     def test_svn_removed(self):
+        # Format: 2 Ziffern + DDMMYYYY (6 Ziffern) + Grossbuchstabe + 3 Ziffern
         result = self.guard.filter_text('SVN: 12010180A123')
         assert '[SVN ENTFERNT]' in result
 
+    # --- Kombiniertes Vorkommen -------------------------------------------
     def test_combined_pii_removed(self):
         text = 'E-Mail: info@test.de, Tel: 030 999888, IBAN: DE02200400600266345400'
         cleaned, count = self.guard.filter_text_counted(text)
         assert count >= 2
         assert 'info@test.de' not in cleaned
 
+    # --- Zähler -----------------------------------------------------------
     def test_removal_counts_accumulate(self):
         g = PrivacyGuard()
         g.filter_text('a@b.de c@d.de')
-        assert g.get_removal_summary()['email'] == 2
+        summary = g.get_removal_summary()
+        assert summary['email'] == 2
 
     def test_removal_counts_zero_initially(self):
         g = PrivacyGuard()
@@ -63,6 +74,7 @@ class TestPrivacyGuardURLChecks:
     def setup_method(self):
         self.guard = PrivacyGuard()
 
+    # --- Sensible URLs ----------------------------------------------------
     def test_login_url_is_sensitive(self):
         assert self.guard.is_sensitive_url('https://example.com/login') is True
 
@@ -81,6 +93,7 @@ class TestPrivacyGuardURLChecks:
     def test_tracking_url_is_sensitive(self):
         assert self.guard.is_sensitive_url('https://example.com/tracking/pixel') is True
 
+    # --- Impressum / Legal Notice -----------------------------------------
     def test_impressum_url_detected(self):
         assert self.guard.check_legal_notice('https://example.com/impressum') is True
 

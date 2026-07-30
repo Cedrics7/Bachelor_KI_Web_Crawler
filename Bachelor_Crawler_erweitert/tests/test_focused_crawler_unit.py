@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from Alt.focused_crawler import FocusedCrawler, DEFAULT_CONFIG
 
 
