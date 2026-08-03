@@ -4,7 +4,7 @@
 
 'use strict';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = '';
 
 async function _get(path) {
     const res = await fetch(API_BASE + path);
@@ -56,9 +56,16 @@ function fetchChangelog() {
     return _get('/api/changelog');
 }
 
+function fetchMapData({ bl = 'Alle', kat = 'Alle', limit = 1000 } = {}) {
+    const p = new URLSearchParams({ limit });
+    if (bl  !== 'Alle') p.set('bundesland', bl);
+    if (kat !== 'Alle') p.set('kategorie',  kat);
+    return _get(`/api/map-data?${p}`);
+}
+
 async function checkApiStatus() {
     try {
-        const res = await fetch(API_BASE + '/api/stats', { signal: AbortSignal.timeout(4000) });
+        const res = await fetch('/api/stats', { signal: AbortSignal.timeout(4000) });
         return res.ok;
     } catch {
         return false;
