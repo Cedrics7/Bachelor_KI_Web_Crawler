@@ -5,29 +5,26 @@
  * damit router.js (non-module) die Funktion direkt aufrufen kann.
  */
 
-'use strict';
-
 (function () {
-    let _mapInstance = null;
+    'use strict';
+
+    var _mapInstance = null;
 
     function initMap() {
-        // Falls bereits initialisiert, nur Daten neu laden
         if (_mapInstance) {
             _loadMapData(_mapInstance);
             return;
         }
 
-        // ── Karte auf Deutschland zentriert ─────────────────────────
-        const map = L.map('map', {
-            center:  [51.2, 10.4],   // geographische Mitte Deutschlands
+        var map = L.map('map', {
+            center:  [51.2, 10.4],
             zoom:    6,
             minZoom: 5,
             maxZoom: 13,
         });
         _mapInstance = map;
 
-        // ── Deutschland-Bounds (harte Grenze) ──────────────────────
-        const deBounds = L.latLngBounds(
+        var deBounds = L.latLngBounds(
             L.latLng(46.5, 5.5),
             L.latLng(55.5, 15.5)
         );
@@ -36,13 +33,11 @@
             map.panInsideBounds(deBounds, { animate: false });
         });
 
-        // ── Tile-Layer (OpenStreetMap) ───────────────────────────
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',
             maxZoom: 19,
         }).addTo(map);
 
-        // ── Deutschland-Umriss (GeoJSON, Telekom Magenta) ────────────
         fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -60,7 +55,6 @@
             })
             .catch(function () {});
 
-        // ── Legende ────────────────────────────────────────────
         var legend = L.control({ position: 'bottomright' });
         legend.onAdd = function () {
             var div = L.DomUtil.create('div');
@@ -125,7 +119,6 @@
             });
     }
 
-    // Als globale Funktion registrieren (für router.js)
     window.initMap = initMap;
 
 }());
