@@ -3,15 +3,30 @@
 geocoding_targets.py
 Geocoded alle crawl_results ohne Koordinaten via Nominatim.
 Fallback-Kaskade: Adresse+Ort → nur Ort
-Ausführen: python geocode_targets.py
+Ausführen: python3 geocode_targets.py
 """
 
+import os
 import time
 import httpx
-from PostSQL_Connect import get_connection
+import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 HEADERS = {"User-Agent": "Bachelor-KI-Crawler/1.0 (Telekom MMS)"}
+
+
+def get_db_connection():
+    """DB-Verbindung identisch zu api.py — liest aus .env oder fällt auf Hardcoded-Defaults zurück."""
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        port=os.getenv("DB_PORT", "5432"),
+        database=os.getenv("DB_NAME", "bachelor_crawler"),
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASS", ""),
+    )
 
 
 def geocode(query: str) -> tuple[float | None, float | None]:
@@ -32,7 +47,7 @@ def geocode(query: str) -> tuple[float | None, float | None]:
 
 
 def main():
-    conn = get_connection()
+    conn = get_db_connection()
     cur = conn.cursor()
 
     cur.execute("""
