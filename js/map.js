@@ -1,148 +1,110 @@
-/* =============================================================
-   map.js — Leaflet-Kartenansicht
-   Zeigt Maßnahmen aus /api/map-data als Marker:
-     🔴 Kleiner Punkt  = Straße bekannt (geo_level='street')
-     🔵 Großer Kreis   = nur Ort bekannt (geo_level='city')
-   ============================================================= */
+/**
+ * map.js – Leaflet-Kartenansicht für das Crawler-Dashboard
+ * Fixes: Deutschland-Zentrum, Bounds, Zoom-Limits, Legende repariert
+ */
 
-'use strict';
+let _mapInstance = null;
 
-let _mapInstance   = null;
-let _markerLayer   = null;
-let _mapDataCache  = null;
-
-/* ----------------------------------------------------------
-   Einstiegspunkt — wird von router.js aufgerufen
----------------------------------------------------------- */
-async function initMap() {
-    // Karte nur einmal initialisieren
-    if (!_mapInstance) {
-        _mapInstance = L.map('map', { zoomControl: true }).setView([51.1657, 10.4515], 6);
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',
-            maxZoom: 19,
-        }).addTo(_mapInstance);
-
-        _addLegend();
+export function initMap() {
+    if (_mapInstance) {
+        _loadMapData(_mapInstance);
+        return;
     }
 
-    // Größe neu berechnen (wichtig wenn Karte vorher hidden war)
-    setTimeout(() => _mapInstance.invalidateSize(), 50);
-
-    // Daten nur einmal laden (Cache)
-    if (!_mapDataCache) {
-        try {
-            const res = await fetch('/api/map-data');
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            _mapDataCache = await res.json();
-        } catch (err) {
-            console.error('map.js: Fehler beim Laden der Kartendaten:', err);
-            _showMapError();
-            return;
-        }
-    }
-
-    _renderMarkers(_mapDataCache);
-}
-
-/* ----------------------------------------------------------
-   Marker rendern
----------------------------------------------------------- */
-function _renderMarkers(data) {
-    if (_markerLayer) {
-        _mapInstance.removeLayer(_markerLayer);
-    }
-    _markerLayer = L.layerGroup().addTo(_mapInstance);
-
-    let streetCount = 0, cityCount = 0;
-
-    data.forEach((m) => {
-        if (!m.lat || !m.lng) return;
-
-        const isStreet = m.geo_level === 'street';
-        isStreet ? streetCount++ : cityCount++;
-
-        const marker = L.circleMarker([m.lat, m.lng], _markerStyle(isStreet));
-        marker.bindPopup(_buildPopup(m));
-        marker.addTo(_markerLayer);
+    // ── Karte auf Deutschland zentriert ───────────────────────────
+    const map = L.map('map', {
+        center:  [51.2, 10.4],   // geographische Mitte Deutschlands
+        zoom:    6,
+        minZoom: 5,              // kein Rauszoomen auf Weltkarte
+        maxZoom: 13,
     });
+    _mapInstance = map;
 
-    console.debug(`map.js: ${streetCount} Straßen-Marker, ${cityCount} Orts-Marker gerendert.`);
-}
+    // ── Deutschland-Bounds (harte Grenze) ────────────────────────
+    const deBounds = L.latLngBounds(
+        L.latLng(46.5, 5.5),    // SW (Süden/Westen)
+        L.latLng(55.5, 15.5)    // NO (Norden/Osten)
+    );
+    map.setMaxBounds(deBounds);
+    map.on('drag', () => map.panInsideBounds(deBounds, { animate: false }));
 
-/* ----------------------------------------------------------
-   Marker-Style nach Präzision
----------------------------------------------------------- */
-function _markerStyle(isStreet) {
-    return isStreet
-        ? { radius: 7,  color: '#E20074', fillColor: '#E20074', fillOpacity: 0.9, weight: 2 }
-        : { radius: 13, color: '#0064A3', fillColor: '#0064A3', fillOpacity: 0.25, weight: 2 };
-}
+    // ── Tile-Layer ───────────────────────────────────────────
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',
+        maxZoom: 19,
+    }).addTo(map);
 
-/* ----------------------------------------------------------
-   Popup-Inhalt
----------------------------------------------------------- */
-function _buildPopup(m) {
-    const zeitraum = (m.massnahme_start || m.massnahme_ende)
-        ? `${m.massnahme_start ?? '?'} – ${m.massnahme_ende ?? '?'}`
-        : '–';
-    const quelle = m.massnahme_url
-        ? `<a href="${m.massnahme_url}" target="_blank" rel="noopener noreferrer">Quelle öffnen ↗</a>`
-        : '';
+    // ── Deutschland-Umriss (GeoJSON, Telekom Magenta) ───────────────
+    fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
+        .then(r => r.json())
+        .then(data => {
+            const de = data.features.find(f => f.properties.ISO_A2 === 'DE');
+            if (de) {
+                L.geoJSON(de, {
+                    style: {
+                        color: '#e20074', weight: 2,
+                        fillColor: '#e20074', fillOpacity: 0.04,
+                    }
+                }).addTo(map);
+            }
+        })
+        .catch(() => {});
 
-    return `
-        <div style="min-width:200px;font-size:0.85rem;line-height:1.5">
-            <b style="display:block;margin-bottom:4px">${_esc(m.massnahme)}</b>
-            <span style="font-size:0.75rem;opacity:0.7">${m.geo_level === 'street' ? '🎯 Straße' : '📍 Ort'}</span><br>
-            📍 ${_esc(m.adresse || m.ort)}, ${_esc(m.bundesland ?? '')}<br>
-            🏷 ${_esc(m.kategorie ?? '–')}<br>
-            📅 ${zeitraum}<br>
-            ${quelle}
-        </div>`;
-}
-
-/* ----------------------------------------------------------
-   Legende
----------------------------------------------------------- */
-function _addLegend() {
+    // ── Legende ───────────────────────────────────────────────
     const legend = L.control({ position: 'bottomright' });
-    legend.onAdd = function () {
+    legend.onAdd = () => {
         const div = L.DomUtil.create('div');
         div.style.cssText = [
-            'background:var(--color-bg, #fff)',
-            'border:1px solid #ccc',
-            'border-radius:6px',
-            'padding:10px 14px',
-            'font-size:0.78rem',
-            'line-height:1.8',
-            'box-shadow:0 1px 4px rgba(0,0,0,.15)',
+            'background:var(--color-surface,#fff)',
+            'border:1px solid var(--color-border,#ddd)',
+            'border-radius:8px', 'padding:10px 14px',
+            'font-size:13px', 'line-height:1.8',
+            'color:var(--color-text,#222)',
+            'box-shadow:0 2px 6px rgba(0,0,0,.15)',
+            'min-width:220px',
         ].join(';');
-        div.innerHTML = [
-            '<b style="display:block;margin-bottom:4px">Präzision</b>',
-            '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;',
-            'background:#E20074;margin-right:6px;vertical-align:middle"></span>Straße bekannt<br>',
-            '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;',
-            'background:#0064A3;opacity:0.4;margin-right:6px;vertical-align:middle"></span>Nur Ort bekannt',
-        ].join('');
+        div.innerHTML =
+            '<strong style="display:block;margin-bottom:6px">Legende</strong>' +
+            _legendRow('#28a745', 'Präziser Standort (Straße)') +
+            _legendRow('#ffc107', 'Ungefährer Standort (Ort)');
         return div;
     };
-    legend.addTo(_mapInstance);
+    legend.addTo(map);
+
+    _loadMapData(map);
 }
 
-/* ----------------------------------------------------------
-   Fehleranzeige
----------------------------------------------------------- */
-function _showMapError() {
-    const el = document.getElementById('map');
-    if (el) {
-        el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;opacity:0.5">Kartendaten konnten nicht geladen werden.</div>';
-    }
+function _legendRow(color, label) {
+    return (
+        '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;' +
+        'background:' + color + ';flex-shrink:0"></span>' +
+        '<span>' + label + '</span></div>'
+    );
 }
 
-function _esc(str) {
-    if (str == null) return '';
-    return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function _loadMapData(map) {
+    fetch('/api/map-data')
+        .then(r => r.json())
+        .then(items => {
+            map.eachLayer(layer => {
+                if (layer instanceof L.CircleMarker) map.removeLayer(layer);
+            });
+            items.forEach(item => {
+                const lat = parseFloat(item.lat);
+                const lng = parseFloat(item.lng);
+                if (isNaN(lat) || isNaN(lng)) return;
+                const precise = item.geo_level === 'street';
+                L.circleMarker([lat, lng], {
+                    radius: 7, color: '#fff', weight: 1.5,
+                    fillColor: precise ? '#28a745' : '#ffc107',
+                    fillOpacity: 0.85,
+                }).bindPopup(
+                    '<strong>' + (item.massnahme || 'Maßnahme') + '</strong><br>' +
+                    (item.ort || '') + (item.bundesland ? ' · ' + item.bundesland : '') + '<br>' +
+                    '<small>' + (item.adresse || '') + '</small>'
+                ).addTo(map);
+            });
+        })
+        .catch(err => console.warn('map-data konnte nicht geladen werden:', err));
 }
