@@ -4,7 +4,7 @@
 
 'use strict';
 
-const PAGES = ['bestandsdaten', 'bewegungsdaten', 'monitoring', 'changelog'];
+const PAGES = ['bestandsdaten', 'bewegungsdaten', 'karte', 'monitoring', 'changelog'];
 
 // Filter-Parameter die je Seite exklusiv sind und beim
 // Seitenwechsel zurückgesetzt werden müssen.
@@ -111,6 +111,7 @@ async function render() {
     else _stopMonitoringRefresh();
 
     if (state.page === 'changelog') { await loadChangelog(); return; }
+    if (state.page === 'karte')     { await initMap();       return; }
 
     _syncFilters(state);
 
