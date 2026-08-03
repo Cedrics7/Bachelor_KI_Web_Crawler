@@ -188,6 +188,70 @@ def get_bewegungsdaten(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/map-data")
+def get_map_data(
+    bundesland: str = Query("Alle"),
+    kategorie: str = Query("Alle"),
+    limit: int = Query(1000, ge=1, le=5000)
+):
+    """
+    Gibt geocodierte Maßnahmen für die Kartenansicht zurück.
+    Nur Einträge mit gesetzten Koordinaten (lat/lng).
+    geo_level: 'street' = Straße bekannt, 'city' = nur Ort bekannt.
+    """
+    try:
+        conn = get_db_connection(as_dict=True)
+        cur = conn.cursor()
+        where_conds = [
+            "r.massnahme IS NOT NULL",
+            "r.lat IS NOT NULL",
+            "r.lng IS NOT NULL",
+        ]
+        params = []
+        if bundesland != "Alle":
+            where_conds.append("t.bundesland = %s")
+            params.append(bundesland)
+        if kategorie != "Alle":
+            where_conds.append("r.kategorie = %s")
+            params.append(kategorie)
+        where_clause = "WHERE " + " AND ".join(where_conds)
+        cur.execute(f"""
+            SELECT
+                r.id,
+                r.massnahme,
+                r.adresse,
+                r.kategorie,
+                r.massnahme_url,
+                r.massnahme_start,
+                r.massnahme_ende,
+                r.lat,
+                r.lng,
+                r.geo_level,
+                t.ort,
+                t.bundesland
+            FROM crawl_results r
+            JOIN crawl_targets t ON r.ags::text = t.ags::text
+            {where_clause}
+            ORDER BY r.gefunden_am DESC
+            LIMIT %s
+        """, params + [limit])
+        rows = cur.fetchall()
+        conn.close()
+        result = []
+        for row in rows:
+            item = dict(row)
+            for k, v in item.items():
+                if isinstance(v, datetime):
+                    item[k] = v.strftime('%Y-%m-%dT%H:%M:%S')
+                elif isinstance(v, date):
+                    item[k] = v.strftime('%Y-%m-%d')
+            result.append(item)
+        return result
+    except Exception as e:
+        print(f"Fehler map-data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/bestandsdaten/{item_id}")
 def get_bestandsdaten_by_id(item_id: int):
     try:
