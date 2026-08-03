@@ -38,6 +38,7 @@
             maxZoom: 19,
         }).addTo(map);
 
+        // ── Deutschland-Umriss: starke Magenta-Grenze + sichtbare Füllung ──
         fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -45,16 +46,21 @@
                 if (de) {
                     L.geoJSON(de, {
                         style: {
-                            color:       '#e20074',
-                            weight:      2,
-                            fillColor:   '#e20074',
-                            fillOpacity: 0.04,
+                            color:       '#e20074',   // Telekom Magenta Rand
+                            weight:      4,           // deutlich dicker
+                            opacity:     1,
+                            fillColor:   '#e20074',   // Magenta Füllung
+                            fillOpacity: 0.13,        // sichtbar aber transparent
+                            dashArray:   null,
+                            lineCap:     'round',
+                            lineJoin:    'round',
                         }
                     }).addTo(map);
                 }
             })
             .catch(function () {});
 
+        // ── Legende ──
         var legend = L.control({ position: 'bottomright' });
         legend.onAdd = function () {
             var div = L.DomUtil.create('div');
