@@ -100,7 +100,31 @@ INSERT INTO changelog (version, release_date, title, description, commit_sha) VA
 
 ('1.15.0', '2026-06-02', 'VG-Redirect-Support & Browser-User-Agent',
     'VG-Redirect-Erkennung (_is_vg_redirect): Verwaltungsgemeinschaft-Redirects werden akzeptiert wenn Gemeindenamen als Pfadsegment in Ziel-URL vorkommt, Subpath-Filter verhindert unkontrolliertes Crawlen aller VG-Mitgliedsgemeinden, vg_max_queue=80 reduziert Queue-Limit bei VG-Seiten, Browser-like User-Agent für httpx.Client (http_user_agent in CONFIG) behebt 503/403-Blocking durch TYPO3 und Apache',
-    '6021ab6ea2b659f71b1188f737922c5f9706801d');
+    '6021ab6ea2b659f71b1188f737922c5f9706801d'),
+
+('1.16.0', '2026-07-28', 'Bachelor_Crawler_erweitert – Vollintegration',
+    'run_crawler.py lädt alle 10.653 crawl_targets aus PostgreSQL und crawlt sie sequenziell (last_scanned ASC). DB-Status (aktiv/inaktiv) + Heartbeat wie crawler_js. LLM-Gate auf relevance.is_relevant geprüft (nur relevante Seiten ans LLM). LLM-bestätigte Funde in crawl_results geschrieben (kompatibel mit crawler_js). Duplikat-Schutz via content_hash + is_duplicate(). NUL-Bytes bereinigt, Bild-URLs übersprungen.',
+    'aeddc2c4b425c0ffcf3fb6d537f4753457efb78c'),
+
+('1.17.0', '2026-07-28', 'LLM-Prompt-Overhaul & Ortsplan-Fix',
+    'Prompt aus crawler_js/_build_prompt übernommen – extrahiert konkrete Maßnahmen als JSON-Liste. LLMClient.analyse() liefert {massnahmen:[...]} zurück. max_tokens auf 128.000 geclampt (API-Fehler vermieden). GPT-5/GPT-5-mini: kein temperature-Parameter. GPT-5.1: reasoning_effort=none. Ortsplan-Redirect-URLs (jet-engine/stadtplan) werden übersprungen. save_llm_result() nur bei echten Maßnahmen aufgerufen.',
+    '1371e303b10ead734a705632b5156f7356871693'),
+
+('1.18.0', '2026-07-28', 'CrawlerLogger & Feature-Events',
+    'CrawlerLogger gibt alle Feature-Events dual aus (Konsole + JSON-Datei). Vollständige Logger-Calls in focused_crawler.py: FETCH, PDF, VG, RELEVANZ, CPE, PII, JS, RAM, HASH-DUP. filter_text_counted() zu PrivacyGuard hinzugefügt (gibt (text, n_replacements) zurück). sl.score → sl.cpe_score Bugfix (ScoredLink-Attributname).',
+    '4543429dbb77fd423c11bf776a4d07b03712fa6f'),
+
+('1.19.0', '2026-07-30', 'Test-Suite & Evaluation-Framework',
+    'Test-Suite: test_smoke.py (E2E-Integrationstest mit gemocktem HTTP-Server), test_privacy_guard.py, test_robots_checker.py. Tests in Bachelor_Crawler_erweitert/tests/ Unterordner verschoben. baseline_runner.py: automatisierter BFS-vs-Focused Vergleichs-Runner mit JSON-Export. baseline_scenarios.json: 3 reproduzierbare Szenarien (Leer, Saarlouis, Barssel). ReferenceCorpus-Modul für automatische Recall/F1-Berechnung via Goldstandard-JSON. Strukturiertes LLM-Output-Schema (Issue #2) + reproduzierbare Seed-Pipeline (Issue #3).',
+    'ed1e15c329ee838d04b8c5a8dcb441af82e9426c'),
+
+('1.20.0', '2026-08-03', 'Kartenansicht mit Leaflet & Geocoding',
+    'Neue Seite Karte im Dashboard (Nav-Link, page-karte Section). Leaflet-Karte mit präzisen/unpräzisen Markern und Legende (js/map.js). Geocoding-Kaskade via Nominatim (Straße→Ort-Fallback) in geocode_targets.py. DB-Migration add_coordinates.sql: Spalten lat/lng/geo_level in crawl_results. Neuer API-Endpunkt GET /api/map-data: crawl_results JOIN crawl_targets, nur Einträge mit gesetzten Koordinaten. DB-Verbindung direkt via psycopg2 (PostSQL_Connect.py in Alt/ verschoben).',
+    '3e08aeaff0e5e80e1212ee08310753aed45cb96d'),
+
+('1.21.0', '2026-08-03', 'Dashboard-Fix & Geocoding-Automatisierung',
+    'api.js: API_BASE auf relative URL umgestellt (localhost entfernt, produktionsreif). Leaflet CDN: integrity/crossorigin-Attribute entfernt (behebt SRI-Blockierung im Browser). run_crawler.py: _run_geocoding() nach jedem vollständigen Crawl-Durchlauf aufgerufen – Kartendaten werden automatisch aktuell gehalten.',
+    'a1ff641035fc7686670bdfdd8d23b22c4fa8228e');
 
 
 -- ============================================================
@@ -325,10 +349,100 @@ SELECT id, 'fix',  'scraper', 'Munningen (TYPO3 308-Redirect über vg-oettingen.
 INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
 SELECT id, 'feat', 'config',  'http_user_agent als zentraler CONFIG-Parameter in config_js.py',                                              '6021ab6e', 6 FROM changelog WHERE version = '1.15.0';
 
+-- v1.16.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler', 'run_crawler.py: lädt alle 10.653 crawl_targets aus PostgreSQL und crawlt sequenziell (last_scanned ASC)',        'aeddc2c4', 1 FROM changelog WHERE version = '1.16.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler', 'DB-Status (aktiv/inaktiv) + Heartbeat exakt wie crawler_js (_db_set_status / _db_heartbeat)',                   '1371e303', 2 FROM changelog WHERE version = '1.16.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'crawler', 'LLM-Gate: nur relevante Seiten ans LLM (relevance.is_relevant == True)',                                        '8067d21a', 3 FROM changelog WHERE version = '1.16.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'llm',     'max_tokens auf 128.000 geclampt (API-Fehler max_tokens too large vermieden)',                                    '4bc995b1', 4 FROM changelog WHERE version = '1.16.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'llm',     'GPT-5/GPT-5-mini: kein temperature-Parameter; GPT-5.1: reasoning_effort=none',                                  '4bc995b1', 5 FROM changelog WHERE version = '1.16.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'db',      'LLM-bestätigte Funde in crawl_results geschrieben (kompatibel mit crawler_js), save_llm_result()',              '63d116ca', 6 FROM changelog WHERE version = '1.16.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'db',      'Duplikat-Schutz via content_hash + is_duplicate() (ags + massnahme + massnahme_start als Unique-Key)',           '4caabdcc', 7 FROM changelog WHERE version = '1.16.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'db',      'NUL-Bytes in DB-Insert bereinigt, Bild-URLs im Crawler übersprungen',                                           'e1c22a0d', 8 FROM changelog WHERE version = '1.16.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'db',      'DB-Maßnahmen aus llm_result[massnahmen] gelesen + URL-Pfad-Concatenation-Bug behoben',                         'd0545264', 9 FROM changelog WHERE version = '1.16.0';
+
+-- v1.17.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'crawler', 'Ortsplan-Redirect-URLs (jet-engine/stadtplan) werden vor Fetch übersprungen',                                    '1371e303', 1 FROM changelog WHERE version = '1.17.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'llm',     'Prompt aus crawler_js/_build_prompt übernommen: extrahiert Maßnahmen als JSON-Liste statt relevant=true/false',  '1371e303', 2 FROM changelog WHERE version = '1.17.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'logger',  'CrawlerLogger.error(): event-Keyword-Konflikt in _write() behoben',                                             '660d687c', 3 FROM changelog WHERE version = '1.17.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'logger',  '_write() entfernt reservierte Keys (event/level/message/ts) aus **data (TypeError verhindert)',                  '96950004', 4 FROM changelog WHERE version = '1.17.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'refactor', 'config', 'max_targets/prio_region/sleep_between_targets in DEFAULT_CONFIG zentralisiert',                              '3324fb8d', 5 FROM changelog WHERE version = '1.17.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'docs', 'config',  '.env.example mit WireGuard-PostgreSQL-Konfiguration aktualisiert',                                              '1137a842', 6 FROM changelog WHERE version = '1.17.0';
+
+-- v1.18.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'logger',  'CrawlerLogger: dual-output – alle Feature-Events auf Konsole UND in JSON-Datei',                               'e90b07253', 1 FROM changelog WHERE version = '1.18.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler', 'Vollständige Feature-Logger-Calls in focused_crawler.py: FETCH, PDF, VG, RELEVANZ, CPE, PII, JS, RAM, HASH-DUP', '4543429d', 2 FROM changelog WHERE version = '1.18.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'privacy', 'filter_text_counted() zu PrivacyGuard hinzugefügt (gibt (text, n_replacements) zurück)',                       '144cb29f', 3 FROM changelog WHERE version = '1.18.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'crawler', 'sl.score → sl.cpe_score (korrekter ScoredLink-Attributname)',                                                   'd4aab38c', 4 FROM changelog WHERE version = '1.18.0';
+
+-- v1.19.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'tests',   'test_smoke.py: E2E-Integrationstest mit gemocktem HTTP-Server (alle Kernkomponenten)',                          '0808bd23', 1 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'tests',   'test_privacy_guard.py: Unit-Tests DSGVO-Filterung (E-Mail, Telefon, IBAN, SVN, sensible URLs)',                 '0808bd23', 2 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'tests',   'test_robots_checker.py: Unit-Tests robots.txt-Compliance (allow/disallow, crawl-delay, cache)',                 '0808bd23', 3 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'refactor', 'tests', 'Tests in Bachelor_Crawler_erweitert/tests/ Unterordner verschoben (tests/__init__.py neu)',                   'caeb5acfe', 4 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'eval',    'baseline_runner.py: BFS-vs-Focused Vergleichs-Runner mit JSON-Export + tabellarischer Zusammenfassung',         '973e2b5f', 5 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'eval',    'baseline_scenarios.json: 3 reproduzierbare Testszenarien (Leer, Saarlouis, Barssel)',                           '973e2b5f', 6 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'eval',    'ReferenceCorpus-Modul + Goldstandard-Templates für automatische Recall/F1-Berechnung',                          '2b9619f6', 7 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'eval',    'Strukturiertes LLM-Output-Schema (Issue #2) + reproduzierbare Seed-Pipeline (Issue #3)',                        'ed1e15c3', 8 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'eval',    'baseline_runner: skip robots.txt für Seed-URL + SyntaxWarning mit raw-String behoben',                         '6af49573', 9 FROM changelog WHERE version = '1.19.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'crawler', 'Stade → Rotenburg (Wümme): keine restriktive robots.txt; PDF-Links ans Queue-Ende; sleep_between_requests',    '22a7210e', 10 FROM changelog WHERE version = '1.19.0';
+
+-- v1.20.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'frontend', 'Neue Seite Karte im Dashboard: Nav-Link, page-karte Section, Leaflet CDN eingebunden',                         '3e08aeaf', 1 FROM changelog WHERE version = '1.20.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'map',      'js/map.js: Leaflet-Karte mit präzisen (grün) und unpräzisen (gelb) Markern + Legende',                        '3e08aeaf', 2 FROM changelog WHERE version = '1.20.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'geocode',  'geocode_targets.py: Nominatim-Geocoding mit Straße→Ort-Fallback für fehlende Koordinaten',                     '3e08aeaf', 3 FROM changelog WHERE version = '1.20.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'db',       'Migration add_coordinates.sql: Spalten lat FLOAT, lng FLOAT, geo_level TEXT in crawl_results',                 '3e08aeaf', 4 FROM changelog WHERE version = '1.20.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'api',      'Neuer Endpunkt GET /api/map-data: crawl_results JOIN crawl_targets, nur Einträge mit Koordinaten',             'e2d3b84f', 5 FROM changelog WHERE version = '1.20.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'refactor', 'db',   'PostSQL_Connect.py nach Alt/ verschoben; geocode_targets.py nutzt direktes psycopg2',                         '5e17a349', 6 FROM changelog WHERE version = '1.20.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',      'router', 'router.js: Seite karte in PAGES registriert + initMap() im render()-Aufruf',                                '3e08aeaf', 7 FROM changelog WHERE version = '1.20.0';
+
+-- v1.21.0
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'frontend', 'api.js: API_BASE auf relative URL umgestellt – localhost entfernt (produktionsreif)',                          'f0cd8b02', 1 FROM changelog WHERE version = '1.21.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'fix',  'frontend', 'index.html: Leaflet integrity/crossorigin-Attribute entfernt (SRI-Blockierung im Browser behoben)',             'a1ff6410', 2 FROM changelog WHERE version = '1.21.0';
+INSERT INTO changelog_items (changelog_id, type, scope, message, commit_sha, sort_order)
+SELECT id, 'feat', 'crawler',  'run_crawler.py: _run_geocoding() nach jedem Durchlauf – Kartendaten automatisch aktuell gehalten',              'a1ff6410', 3 FROM changelog WHERE version = '1.21.0';
+
 
 -- ============================================================
 -- FERTIG
 -- Nur changelog + changelog_items befüllt.
 -- crawl_targets und crawl_results wurden NICHT angefasst.
--- Versionen: 21 (0.1.0 – 1.15.0) | Items: 75
+-- Versionen: 27 (0.1.0 – 1.21.0) | Items: 107
 -- ============================================================
