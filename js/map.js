@@ -5,19 +5,14 @@
  * damit router.js (non-module) die Funktion direkt aufrufen kann.
  *
  * Feature: Dark-/Lightmode-Unterstützung (Issue #9).
- * - Zwei Tile-Layer (hell: OSM Standard, dunkel: CARTO Dark Matter),
- *   Umschaltung über window.setMapTheme(isDark), aufgerufen von
- *   theme.js bei jedem Theme-Wechsel.
- * - Legende nutzt jetzt die echten Dashboard-Tokens
- *   (--dashboard-bg-card, --dashboard-text, --dashboard-border)
- *   statt nicht existierender Variablen -> schaltet automatisch mit.
+ * - Zwei Tile-Layer (hell: OSM Standard, dunkel: CARTO Dark Matter).
  *
- * Bugfix: setMapTheme() wechselte zuvor per hasLayer()-Prüfung
- * zustandsabhängig zwischen den Layern. Trat initMap() zuerst im
- * Dark Mode auf, konnte der Light-Layer nie sauber aktiviert werden
- * (Wechsel zu Light hatte keine Wirkung). Jetzt werden beide Layer
- * beim Umschalten immer zuerst explizit entfernt und danach nur der
- * Ziel-Layer neu hinzugefügt – unabhängig vom bisherigen Zustand.
+ * Bugfix v2: Das bisherige Umschalten per removeLayer()/addTo()
+ * funktionierte bei manchen Nutzern nicht zuverlässig (Legende schaltete
+ * korrekt um, da rein CSS-basiert — die Kachel-Ebene aber nicht).
+ * Jetzt bleiben BEIDE Tile-Layer dauerhaft auf der Karte und es wird
+ * nur die Deckkraft (setOpacity) umgeschaltet – keine Add/Remove-
+ * Lifecycle-Abhängigkeit mehr, dadurch deutlich robuster.
  */
 
 (function () {
@@ -36,6 +31,7 @@
 
     function initMap() {
         if (_mapInstance) {
+            setMapTheme(_currentlyDark());
             _invalidateSizeSoon(_mapInstance);
             _loadMapData(_mapInstance);
             return;
@@ -69,11 +65,12 @@
             subdomains: 'abcd',
         });
 
-        /* Nur den initial passenden Layer hinzufügen; der andere bleibt
-           unangehängt, bis setMapTheme() ihn ggf. aktiviert. */
-        (_currentlyDark() ? _darkTiles : _lightTiles).addTo(map);
+        /* Beide Layer sofort und dauerhaft hinzufügen — Umschaltung
+           erfolgt danach ausschließlich über setOpacity(). */
+        _lightTiles.addTo(map);
+        _darkTiles.addTo(map);
 
-        _drawUmriss(map, _currentlyDark());
+        setMapTheme(_currentlyDark());
 
         var legend = L.control({ position: 'bottomright' });
         legend.onAdd = function () {
@@ -115,24 +112,26 @@
 
     /* ----------------------------------------------------------
        Theme-Wechsel: wird von theme.js bei jedem Toggle/Systemwechsel
-       aufgerufen (window.setMapTheme). Tauscht Tile-Layer + Umriss-Farbe.
-
-       Fix: beide Layer werden immer erst entfernt (falls vorhanden),
-       dann wird nur der Ziel-Layer neu hinzugefügt. So spielt der
-       bisherige addTo()-Zustand keine Rolle mehr für die Umschaltung.
+       aufgerufen (window.setMapTheme). Blendet nur die Deckkraft der
+       beiden dauerhaft vorhandenen Tile-Layer um + Umriss-Farbe.
     ---------------------------------------------------------- */
     function setMapTheme(isDark) {
-        if (!_mapInstance || !_lightTiles || !_darkTiles) return;
+        if (!_lightTiles || !_darkTiles) return;
 
-        if (_mapInstance.hasLayer(_lightTiles)) _mapInstance.removeLayer(_lightTiles);
-        if (_mapInstance.hasLayer(_darkTiles))  _mapInstance.removeLayer(_darkTiles);
+        _lightTiles.setOpacity(isDark ? 0 : 1);
+        _darkTiles.setOpacity(isDark ? 1 : 0);
 
-        var target = isDark ? _darkTiles : _lightTiles;
-        target.addTo(_mapInstance);
-        target.bringToFront();
+        /* Inaktiven Layer aus dem Klickpfad nehmen, damit er nicht
+           versehentlich Interaktionen des sichtbaren Layers stört. */
+        var lightEl = _lightTiles.getContainer && _lightTiles.getContainer();
+        var darkEl  = _darkTiles.getContainer && _darkTiles.getContainer();
+        if (lightEl) lightEl.style.pointerEvents = isDark ? 'none' : '';
+        if (darkEl)  darkEl.style.pointerEvents  = isDark ? '' : 'none';
 
-        _drawUmriss(_mapInstance, isDark);
-        _invalidateSizeSoon(_mapInstance);
+        if (_mapInstance) {
+            (isDark ? _darkTiles : _lightTiles).bringToFront();
+            _drawUmriss(_mapInstance, isDark);
+        }
     }
 
     function _drawUmriss(map, isDark) {
