@@ -3,15 +3,30 @@
  *
  * KEIN ES-Modul-Export – initMap wird als window.initMap registriert,
  * damit router.js (non-module) die Funktion direkt aufrufen kann.
+ *
+ * Bugfix (Issue #9): Auf mobilen Endgeräten wurde die Karte nicht
+ * geladen, wenn der Tab "Karte" angeklickt wurde. Ursache: Der
+ * #map-Container ist beim ersten Initialisieren noch über
+ * "display:none" (.hidden) versteckt, Leaflet berechnet die
+ * Kartengröße dadurch als 0x0 und zeigt danach nur graue Kacheln
+ * bzw. gar nichts an. invalidateSize() wurde in einem früheren
+ * Refactoring versehentlich entfernt und hier wieder ergänzt –
+ * inkl. Aufruf bei jedem erneuten Tab-Wechsel und bei Resize/
+ * Orientation-Change, damit es auch bei Rotation auf Mobilgeräten
+ * funktioniert.
  */
 
 (function () {
     'use strict';
 
     var _mapInstance = null;
+    var _resizeBound = false;
 
     function initMap() {
         if (_mapInstance) {
+            // Tab wurde erneut geöffnet: Containergröße kann sich
+            // geändert haben (z.B. Rotation), daher neu berechnen.
+            _invalidateSizeSoon(_mapInstance);
             _loadMapData(_mapInstance);
             return;
         }
@@ -46,11 +61,11 @@
                 if (de) {
                     L.geoJSON(de, {
                         style: {
-                            color:       '#e20074',   // Telekom Magenta Rand
-                            weight:      4,           // deutlich dicker
+                            color:       '#e20074',
+                            weight:      4,
                             opacity:     1,
-                            fillColor:   '#e20074',   // Magenta Füllung
-                            fillOpacity: 0.13,        // sichtbar aber transparent
+                            fillColor:   '#e20074',
+                            fillOpacity: 0.13,
                             dashArray:   null,
                             lineCap:     'round',
                             lineJoin:    'round',
@@ -60,7 +75,6 @@
             })
             .catch(function () {});
 
-        // ── Legende ──
         var legend = L.control({ position: 'bottomright' });
         legend.onAdd = function () {
             var div = L.DomUtil.create('div');
@@ -77,13 +91,38 @@
             ].join(';');
             div.innerHTML =
                 '<strong style="display:block;margin-bottom:6px">Legende</strong>' +
-                _legendRow('#28a745', 'Pr\u00e4ziser Standort (Stra\u00dfe)') +
-                _legendRow('#ffc107', 'Ungef\u00e4hrer Standort (Ort)');
+                _legendRow('#28a745', 'Präziser Standort (Straße)') +
+                _legendRow('#ffc107', 'Ungefährer Standort (Ort)');
             return div;
         };
         legend.addTo(map);
 
+        // Fix: Container war beim Initialisieren evtl. noch "hidden"
+        // (display:none) -> Leaflet kennt dann eine Größe von 0x0.
+        // invalidateSize() zwingt Leaflet, die Größe nach dem Sichtbar-
+        // werden neu zu berechnen. Mehrere Versuche (rAF + Timeout),
+        // da mobile Browser das Layout teils verzögert fertigstellen.
+        _invalidateSizeSoon(map);
+
+        if (!_resizeBound) {
+            window.addEventListener('resize', function () {
+                if (_mapInstance) _mapInstance.invalidateSize();
+            });
+            window.addEventListener('orientationchange', function () {
+                if (_mapInstance) _invalidateSizeSoon(_mapInstance);
+            });
+            _resizeBound = true;
+        }
+
         _loadMapData(map);
+    }
+
+    function _invalidateSizeSoon(map) {
+        if (window.requestAnimationFrame) {
+            window.requestAnimationFrame(function () { map.invalidateSize(); });
+        }
+        setTimeout(function () { map.invalidateSize(); }, 100);
+        setTimeout(function () { map.invalidateSize(); }, 400);
     }
 
     function _legendRow(color, label) {
@@ -96,7 +135,7 @@
     }
 
     function _loadMapData(map) {
-        fetch('/api/map-data')
+        fetch('/api/map-data?limit=5000')
             .then(function (r) { return r.json(); })
             .then(function (items) {
                 map.eachLayer(function (layer) {
@@ -114,11 +153,12 @@
                         fillColor:   precise ? '#28a745' : '#ffc107',
                         fillOpacity: 0.85,
                     }).bindPopup(
-                        '<strong>' + (item.massnahme || 'Ma\u00dfnahme') + '</strong><br>' +
-                        (item.ort || '') + (item.bundesland ? ' \u00b7 ' + item.bundesland : '') + '<br>' +
+                        '<strong>' + (item.massnahme || 'Maßnahme') + '</strong><br>' +
+                        (item.ort || '') + (item.bundesland ? ' · ' + item.bundesland : '') + '<br>' +
                         '<small>' + (item.adresse || '') + '</small>'
                     ).addTo(map);
                 });
+                console.debug('map.js: ' + items.length + ' Maßnahmen auf der Karte gerendert.');
             })
             .catch(function (err) {
                 console.warn('map-data konnte nicht geladen werden:', err);
