@@ -7,6 +7,10 @@
    - body[data-mode] für Scale Web Components
    - scale-button + Scale-Icons erhalten mode-Prop
    - View Transition API für animierten Wechsel (Fallback vorhanden)
+   - Feature (Issue #9): Kartenansicht (map.js) wird bei jedem
+     Theme-Wechsel über window.setMapTheme() benachrichtigt, damit
+     Tile-Layer + Legende sofort mitschalten, auch wenn die Karte
+     gerade geöffnet ist.
    ============================================================= */
 
 (function () {
@@ -69,6 +73,11 @@
                 el.setAttribute('mode', mode);
                 if ('mode' in el) el.mode = mode;
             });
+
+            /* Kartenansicht (map.js) mitschalten, falls initialisiert */
+            if (window.setMapTheme) {
+                window.setMapTheme(dark);
+            }
         };
 
         /* View Transition API — animierter Wechsel */
