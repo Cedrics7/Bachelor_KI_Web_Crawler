@@ -5,13 +5,17 @@
  * damit router.js (non-module) die Funktion direkt aufrufen kann.
  *
  * Features (Issue #9):
- * - Dark-/Lightmode-Unterstützung: zwei dauerhaft geladene Tile-Layer
- *   (hell: OSM, dunkel: CARTO Dark Matter), Umschaltung per setOpacity()
- *   statt add/removeLayer (robuster).
- * - Zoom bis Hausnummern-Ebene: maxZoom von 13 auf 19 angehoben (Maximum,
- *   das sowohl OSM- als auch CARTO-Kacheln unterstützen).
- * - Zeitraum (Beginn/Ende) einer Maßnahme wird jetzt im Marker-Popup
- *   angezeigt (massnahme_start / massnahme_ende aus /api/map-data).
+ * - Dark-/Lightmode-Unterstützung: NUR EINE Kachelquelle (OSM Standard,
+ *   deutsch beschriftet). Der Dark Mode wird per CSS-Filter (invert +
+ *   hue-rotate) auf die Kachel-Ebene angewendet statt einen zweiten
+ *   Kartendienst (z.B. CARTO Dark Matter) zu laden.
+ *   Grund: CARTO Dark Matter zeigt bei niedrigem Zoom oft englische/
+ *   internationale Ortsnamen ("Cologne" statt "Köln") statt der
+ *   deutschen OSM-Namen — die CSS-Invertierung nutzt exakt dieselben
+ *   Kacheln wie der Lightmode und ist daher immer sprachkonsistent.
+ * - Zoom bis Hausnummern-Ebene: maxZoom 19.
+ * - Zeitraum (Beginn/Ende) einer Maßnahme wird im Marker-Popup angezeigt.
+ * - Deutsche Zoom-Button-Tooltips (Vergrößern/Verkleinern).
  */
 
 (function () {
@@ -19,8 +23,7 @@
 
     var _mapInstance   = null;
     var _resizeBound   = false;
-    var _lightTiles    = null;
-    var _darkTiles     = null;
+    var _tiles         = null;
     var _umrissLayer   = null;
 
     function _currentlyDark() {
@@ -37,12 +40,19 @@
         }
 
         var map = L.map('map', {
-            center:  [51.2, 10.4],
-            zoom:    6,
-            minZoom: 5,
-            maxZoom: 19,
+            center:      [51.2, 10.4],
+            zoom:        6,
+            minZoom:     5,
+            maxZoom:     19,
+            zoomControl: false,
         });
         _mapInstance = map;
+
+        L.control.zoom({
+            position:     'topleft',
+            zoomInTitle:  'Vergrößern',
+            zoomOutTitle: 'Verkleinern',
+        }).addTo(map);
 
         var deBounds = L.latLngBounds(
             L.latLng(46.5, 5.5),
@@ -53,21 +63,13 @@
             map.panInsideBounds(deBounds, { animate: false });
         });
 
-        _lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        /* Einzige Kachelquelle — deutsch beschriftet, für Dark Mode
+           wird nur ein CSS-Filter auf die Tile-Pane gelegt (siehe
+           setMapTheme() + css/map-dark.css). */
+        _tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',
             maxZoom: 19,
-        });
-
-        _darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            maxZoom: 19,
-            subdomains: 'abcd',
-        });
-
-        /* Beide Layer sofort und dauerhaft hinzufügen — Umschaltung
-           erfolgt danach ausschließlich über setOpacity(). */
-        _lightTiles.addTo(map);
-        _darkTiles.addTo(map);
+        }).addTo(map);
 
         setMapTheme(_currentlyDark());
 
@@ -110,25 +112,18 @@
     }
 
     /* ----------------------------------------------------------
-       Theme-Wechsel: wird von theme.js bei jedem Toggle/Systemwechsel
-       aufgerufen (window.setMapTheme). Blendet nur die Deckkraft der
-       beiden dauerhaft vorhandenen Tile-Layer um + Umriss-Farbe.
+       Theme-Wechsel: schaltet nur eine CSS-Klasse auf dem Karten-
+       Container um. Die eigentliche Verdunkelung der Kachel-Ebene
+       passiert per CSS-Filter (css/map-dark.css), NICHT über eine
+       zweite Datenquelle — dadurch bleiben Ortsnamen in beiden
+       Modi identisch (deutsch).
     ---------------------------------------------------------- */
     function setMapTheme(isDark) {
-        if (!_lightTiles || !_darkTiles) return;
-
-        _lightTiles.setOpacity(isDark ? 0 : 1);
-        _darkTiles.setOpacity(isDark ? 1 : 0);
-
-        var lightEl = _lightTiles.getContainer && _lightTiles.getContainer();
-        var darkEl  = _darkTiles.getContainer && _darkTiles.getContainer();
-        if (lightEl) lightEl.style.pointerEvents = isDark ? 'none' : '';
-        if (darkEl)  darkEl.style.pointerEvents  = isDark ? '' : 'none';
-
-        if (_mapInstance) {
-            (isDark ? _darkTiles : _lightTiles).bringToFront();
-            _drawUmriss(_mapInstance, isDark);
-        }
+        if (!_mapInstance) return;
+        var container = _mapInstance.getContainer();
+        if (!container) return;
+        container.classList.toggle('map-tiles-dark', !!isDark);
+        _drawUmriss(_mapInstance, isDark);
     }
 
     function _drawUmriss(map, isDark) {
@@ -175,11 +170,6 @@
         );
     }
 
-    /* ----------------------------------------------------------
-       Zeitraum-Zeile für Popup: zeigt Beginn/Ende einer Maßnahme,
-       sofern vorhanden. massnahme_start/massnahme_ende kommen als
-       ISO-Datum (YYYY-MM-DD) von /api/map-data.
-    ---------------------------------------------------------- */
     function _formatDatum(d) {
         if (!d) return null;
         var parts = String(d).split('-');
