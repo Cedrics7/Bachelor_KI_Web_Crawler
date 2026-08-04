@@ -1,0 +1,77 @@
+/* =============================================================
+   responsive-nav.css — Mobile-Fixes für Nav-Leiste & globales Layout
+   Behebt: Seite wirkt auf Mobilgeräten "komisch skaliert", weil die
+   Nav-Leiste (Logo + 4 Reiter + Theme-Icon + API-Status) auf
+   schmalen Viewports breiter als der Bildschirm ist und dadurch der
+   mobile Browser die gesamte Seite automatisch verkleinert
+   (Viewport-Overflow -> Auto-Zoom-Out).
+   ============================================================= */
+
+@media (max-width: 767px) {
+    .nav-bar {
+        flex-wrap: wrap;
+        row-gap: 0.5rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .nav-left {
+        gap: 1rem;
+        flex-wrap: wrap;
+        row-gap: 0.5rem;
+    }
+
+    .nav-links {
+        gap: 0.75rem 1rem;
+        flex-wrap: wrap;
+        order: 3;
+        width: 100%;
+    }
+
+    .nav-link {
+        font-size: 0.65rem;
+        letter-spacing: 0.04em;
+        padding: 0.4rem 0;
+    }
+
+    .nav-right {
+        gap: 0.5rem;
+    }
+
+    /* API-Status-Text auf sehr schmalen Screens ausblenden,
+       Punkt (Online/Offline) bleibt sichtbar */
+    #api-status-label {
+        display: none;
+    }
+
+    /* Haupt-Container: weniger Rand auf Mobilgeräten */
+    .dashboard-main {
+        padding: 1rem;
+    }
+
+    .page-title {
+        font-size: 1.375rem;
+    }
+
+    /* Kartenansicht: feste 600px sind auf kleinen Screens zu hoch */
+    #map {
+        height: 70vh !important;
+        max-height: 480px;
+    }
+
+    /* Filter-/KPI-Grids: Abstand verringern */
+    .kpi-grid,
+    .filter-grid,
+    .monitoring-kpi-grid {
+        gap: 0.75rem;
+    }
+}
+
+@media (max-width: 420px) {
+    .nav-links {
+        gap: 0.5rem 0.75rem;
+    }
+
+    .nav-link {
+        font-size: 0.6rem;
+    }
+}
