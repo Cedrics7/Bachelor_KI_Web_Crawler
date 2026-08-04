@@ -3,7 +3,21 @@
    Leaflet liefert seine Zoom-Buttons/Attribution fest weiß/schwarz
    aus leaflet.css aus — das reagiert nicht auf unser Theme-System.
    Diese Overrides greifen nur, wenn html.dark gesetzt ist.
+
+   Update: Dark Mode nutzt jetzt KEINEN zweiten Kartendienst mehr
+   (CARTO Dark Matter zeigte englische/internationale Ortsnamen statt
+   der deutschen OSM-Namen). Stattdessen wird die einzige (deutsche)
+   OSM-Kachel-Ebene per CSS-Filter optisch verdunkelt — dadurch bleiben
+   Beschriftungen in Light/Dark garantiert identisch.
    ============================================================= */
+
+/* Kachel-Ebene per Filter verdunkeln, wenn die Karte im Dark Mode ist
+   (Klasse wird von map.js über setMapTheme() gesetzt). Popups/Marker/
+   Umriss bleiben unverändert (kein image-rendering, kein tile-pane-
+   Filter darauf), da nur .leaflet-tile-pane gefiltert wird. */
+.leaflet-container.map-tiles-dark .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.85);
+}
 
 html.dark .leaflet-control-zoom a {
     background-color: var(--dashboard-bg-card, #191919);
@@ -53,4 +67,8 @@ html.dark .leaflet-popup-content a {
         background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
         color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
         border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.leaflet-tile-pane {
+    transition: filter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
