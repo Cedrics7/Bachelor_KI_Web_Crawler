@@ -11,6 +11,14 @@
      Theme-Wechsel über window.setMapTheme() benachrichtigt, damit
      Tile-Layer + Legende sofort mitschalten, auch wenn die Karte
      gerade geöffnet ist.
+
+   Bugfix: Ist die Kartenansicht (page-karte) gerade sichtbar, wird
+   die View Transition API übersprungen. Leaflets Kachel-Grid scheint
+   mit dem Vorher/Nachher-Screenshot-Crossfade der View Transition zu
+   kollidieren — der alte Kartenzustand blieb nach einem Klick auf den
+   Theme-Toggle teils "hängen" (v.a. Dark -> Light), obwohl setMapTheme()
+   korrekt aufgerufen wurde. Ohne View Transition wird das Theme direkt
+   angewendet, das Problem trat dort nie auf.
    ============================================================= */
 
 (function () {
@@ -42,6 +50,14 @@
         const mode = dark ? 'dark' : 'light';
         document.documentElement.className = mode;
         document.body && document.body.setAttribute('data-mode', mode);
+    }
+
+    /* ----------------------------------------------------------
+       Prüft, ob die Kartenansicht gerade sichtbar ist.
+    ---------------------------------------------------------- */
+    function _isKartePageVisible() {
+        const el = document.getElementById('page-karte');
+        return !!el && !el.classList.contains('hidden');
     }
 
     /* ----------------------------------------------------------
@@ -80,11 +96,18 @@
             }
         };
 
-        /* View Transition API — animierter Wechsel */
-        if (document.startViewTransition) {
+        /* Karte sichtbar -> View Transition überspringen (siehe Kommentar
+           oben), direkt anwenden. Sonst wie gehabt mit Crossfade. */
+        if (document.startViewTransition && !_isKartePageVisible()) {
             document.startViewTransition(doApply);
         } else {
             doApply();
+            /* Sicherheitsnetz: falls die Karte doch gerade erst nach
+               doApply() initialisiert wurde oder ein Tile-Repaint hängt,
+               nach einem Frame nochmal anstoißen. */
+            if (window.setMapTheme) {
+                requestAnimationFrame(() => window.setMapTheme(dark));
+            }
         }
     }
 
