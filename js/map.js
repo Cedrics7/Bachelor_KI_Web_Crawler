@@ -4,15 +4,14 @@
  * KEIN ES-Modul-Export – initMap wird als window.initMap registriert,
  * damit router.js (non-module) die Funktion direkt aufrufen kann.
  *
- * Feature: Dark-/Lightmode-Unterstützung (Issue #9).
- * - Zwei Tile-Layer (hell: OSM Standard, dunkel: CARTO Dark Matter).
- *
- * Bugfix v2: Das bisherige Umschalten per removeLayer()/addTo()
- * funktionierte bei manchen Nutzern nicht zuverlässig (Legende schaltete
- * korrekt um, da rein CSS-basiert — die Kachel-Ebene aber nicht).
- * Jetzt bleiben BEIDE Tile-Layer dauerhaft auf der Karte und es wird
- * nur die Deckkraft (setOpacity) umgeschaltet – keine Add/Remove-
- * Lifecycle-Abhängigkeit mehr, dadurch deutlich robuster.
+ * Features (Issue #9):
+ * - Dark-/Lightmode-Unterstützung: zwei dauerhaft geladene Tile-Layer
+ *   (hell: OSM, dunkel: CARTO Dark Matter), Umschaltung per setOpacity()
+ *   statt add/removeLayer (robuster).
+ * - Zoom bis Hausnummern-Ebene: maxZoom von 13 auf 19 angehoben (Maximum,
+ *   das sowohl OSM- als auch CARTO-Kacheln unterstützen).
+ * - Zeitraum (Beginn/Ende) einer Maßnahme wird jetzt im Marker-Popup
+ *   angezeigt (massnahme_start / massnahme_ende aus /api/map-data).
  */
 
 (function () {
@@ -41,7 +40,7 @@
             center:  [51.2, 10.4],
             zoom:    6,
             minZoom: 5,
-            maxZoom: 13,
+            maxZoom: 19,
         });
         _mapInstance = map;
 
@@ -121,8 +120,6 @@
         _lightTiles.setOpacity(isDark ? 0 : 1);
         _darkTiles.setOpacity(isDark ? 1 : 0);
 
-        /* Inaktiven Layer aus dem Klickpfad nehmen, damit er nicht
-           versehentlich Interaktionen des sichtbaren Layers stört. */
         var lightEl = _lightTiles.getContainer && _lightTiles.getContainer();
         var darkEl  = _darkTiles.getContainer && _darkTiles.getContainer();
         if (lightEl) lightEl.style.pointerEvents = isDark ? 'none' : '';
@@ -178,6 +175,28 @@
         );
     }
 
+    /* ----------------------------------------------------------
+       Zeitraum-Zeile für Popup: zeigt Beginn/Ende einer Maßnahme,
+       sofern vorhanden. massnahme_start/massnahme_ende kommen als
+       ISO-Datum (YYYY-MM-DD) von /api/map-data.
+    ---------------------------------------------------------- */
+    function _formatDatum(d) {
+        if (!d) return null;
+        var parts = String(d).split('-');
+        if (parts.length === 3) {
+            return parts[2] + '.' + parts[1] + '.' + parts[0];
+        }
+        return d;
+    }
+
+    function _zeitraumZeile(item) {
+        var start = _formatDatum(item.massnahme_start);
+        var ende  = _formatDatum(item.massnahme_ende);
+        if (!start && !ende) return '';
+        var text = (start || '?') + ' – ' + (ende || '?');
+        return '<div style="margin-top:4px">\uD83D\uDCC5 <strong>Zeitraum:</strong> ' + text + '</div>';
+    }
+
     function _loadMapData(map) {
         fetch('/api/map-data?limit=5000')
             .then(function (r) { return r.json(); })
@@ -199,7 +218,8 @@
                     }).bindPopup(
                         '<strong>' + (item.massnahme || 'Maßnahme') + '</strong><br>' +
                         (item.ort || '') + (item.bundesland ? ' · ' + item.bundesland : '') + '<br>' +
-                        '<small>' + (item.adresse || '') + '</small>'
+                        '<small>' + (item.adresse || '') + '</small>' +
+                        _zeitraumZeile(item)
                     ).addTo(map);
                 });
                 console.debug('map.js: ' + items.length + ' Maßnahmen auf der Karte gerendert.');
