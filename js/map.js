@@ -4,28 +4,31 @@
  * KEIN ES-Modul-Export – initMap wird als window.initMap registriert,
  * damit router.js (non-module) die Funktion direkt aufrufen kann.
  *
- * Bugfix (Issue #9): Auf mobilen Endgeräten wurde die Karte nicht
- * geladen, wenn der Tab "Karte" angeklickt wurde. Ursache: Der
- * #map-Container ist beim ersten Initialisieren noch über
- * "display:none" (.hidden) versteckt, Leaflet berechnet die
- * Kartengröße dadurch als 0x0 und zeigt danach nur graue Kacheln
- * bzw. gar nichts an. invalidateSize() wurde in einem früheren
- * Refactoring versehentlich entfernt und hier wieder ergänzt –
- * inkl. Aufruf bei jedem erneuten Tab-Wechsel und bei Resize/
- * Orientation-Change, damit es auch bei Rotation auf Mobilgeräten
- * funktioniert.
+ * Feature: Dark-/Lightmode-Unterstützung (Issue #9).
+ * - Zwei Tile-Layer (hell: OSM Standard, dunkel: CARTO Dark Matter),
+ *   Umschaltung über window.setMapTheme(isDark), aufgerufen von
+ *   theme.js bei jedem Theme-Wechsel.
+ * - Legende nutzt jetzt die echten Dashboard-Tokens
+ *   (--dashboard-bg-card, --dashboard-text, --dashboard-border)
+ *   statt nicht existierender Variablen -> schaltet automatisch mit.
  */
 
 (function () {
     'use strict';
 
-    var _mapInstance = null;
-    var _resizeBound = false;
+    var _mapInstance   = null;
+    var _resizeBound   = false;
+    var _lightTiles    = null;
+    var _darkTiles     = null;
+    var _umrissLayer   = null;
+
+    function _currentlyDark() {
+        if (window._isDark) return !!window._isDark();
+        return document.documentElement.classList.contains('dark');
+    }
 
     function initMap() {
         if (_mapInstance) {
-            // Tab wurde erneut geöffnet: Containergröße kann sich
-            // geändert haben (z.B. Rotation), daher neu berechnen.
             _invalidateSizeSoon(_mapInstance);
             _loadMapData(_mapInstance);
             return;
@@ -48,46 +51,35 @@
             map.panInsideBounds(deBounds, { animate: false });
         });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        _lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',
             maxZoom: 19,
-        }).addTo(map);
+        });
 
-        // ── Deutschland-Umriss: starke Magenta-Grenze + sichtbare Füllung ──
-        fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                var de = data.features.find(function (f) { return f.properties.ISO_A2 === 'DE'; });
-                if (de) {
-                    L.geoJSON(de, {
-                        style: {
-                            color:       '#e20074',
-                            weight:      4,
-                            opacity:     1,
-                            fillColor:   '#e20074',
-                            fillOpacity: 0.13,
-                            dashArray:   null,
-                            lineCap:     'round',
-                            lineJoin:    'round',
-                        }
-                    }).addTo(map);
-                }
-            })
-            .catch(function () {});
+        _darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            maxZoom: 19,
+            subdomains: 'abcd',
+        });
+
+        (_currentlyDark() ? _darkTiles : _lightTiles).addTo(map);
+
+        _drawUmriss(map, _currentlyDark());
 
         var legend = L.control({ position: 'bottomright' });
         legend.onAdd = function () {
-            var div = L.DomUtil.create('div');
+            var div = L.DomUtil.create('div', 'map-legend');
             div.style.cssText = [
-                'background:var(--color-surface,#fff)',
-                'border:1px solid var(--color-border,#ddd)',
+                'background:var(--dashboard-bg-card,#fff)',
+                'border:1px solid var(--dashboard-border,#ddd)',
                 'border-radius:8px',
                 'padding:10px 14px',
                 'font-size:13px',
                 'line-height:1.8',
-                'color:var(--color-text,#222)',
+                'color:var(--dashboard-text,#222)',
                 'box-shadow:0 2px 6px rgba(0,0,0,.15)',
                 'min-width:220px',
+                'transition:background-color 0.4s cubic-bezier(0.4,0,0.2,1),color 0.4s cubic-bezier(0.4,0,0.2,1),border-color 0.4s cubic-bezier(0.4,0,0.2,1)',
             ].join(';');
             div.innerHTML =
                 '<strong style="display:block;margin-bottom:6px">Legende</strong>' +
@@ -97,11 +89,6 @@
         };
         legend.addTo(map);
 
-        // Fix: Container war beim Initialisieren evtl. noch "hidden"
-        // (display:none) -> Leaflet kennt dann eine Größe von 0x0.
-        // invalidateSize() zwingt Leaflet, die Größe nach dem Sichtbar-
-        // werden neu zu berechnen. Mehrere Versuche (rAF + Timeout),
-        // da mobile Browser das Layout teils verzögert fertigstellen.
         _invalidateSizeSoon(map);
 
         if (!_resizeBound) {
@@ -115,6 +102,49 @@
         }
 
         _loadMapData(map);
+    }
+
+    /* ----------------------------------------------------------
+       Theme-Wechsel: wird von theme.js bei jedem Toggle/Systemwechsel
+       aufgerufen (window.setMapTheme). Tauscht Tile-Layer + Umriss-Farbe.
+    ---------------------------------------------------------- */
+    function setMapTheme(isDark) {
+        if (!_mapInstance || !_lightTiles || !_darkTiles) return;
+
+        var target = isDark ? _darkTiles : _lightTiles;
+        var other  = isDark ? _lightTiles : _darkTiles;
+
+        if (!_mapInstance.hasLayer(target)) target.addTo(_mapInstance);
+        if (_mapInstance.hasLayer(other)) _mapInstance.removeLayer(other);
+
+        _drawUmriss(_mapInstance, isDark);
+    }
+
+    function _drawUmriss(map, isDark) {
+        if (_umrissLayer) {
+            map.removeLayer(_umrissLayer);
+            _umrissLayer = null;
+        }
+        fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var de = data.features.find(function (f) { return f.properties.ISO_A2 === 'DE'; });
+                if (de) {
+                    _umrissLayer = L.geoJSON(de, {
+                        style: {
+                            color:       '#e20074',
+                            weight:      4,
+                            opacity:     1,
+                            fillColor:   '#e20074',
+                            fillOpacity: isDark ? 0.22 : 0.13,
+                            dashArray:   null,
+                            lineCap:     'round',
+                            lineJoin:    'round',
+                        }
+                    }).addTo(map);
+                }
+            })
+            .catch(function () {});
     }
 
     function _invalidateSizeSoon(map) {
@@ -165,6 +195,7 @@
             });
     }
 
-    window.initMap = initMap;
+    window.initMap     = initMap;
+    window.setMapTheme = setMapTheme;
 
 }());
