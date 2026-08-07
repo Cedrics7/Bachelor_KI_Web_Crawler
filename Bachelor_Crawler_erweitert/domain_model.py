@@ -30,9 +30,10 @@ class DomainModel:
 
     DEFAULT_KEYWORDS: Dict[str, List[str]] = {
         "bauen": [
-            "bebauungsplan", "bauvorhaben", "bauantrag", "baugenehmigung",
-            "bauleitplanung", "stadtplanung", "flaechennutzungsplan",
+            "bebauungsplan", "bebauungsplaene", "bauvorhaben", "bauantrag", "baugenehmigung",
+            "bauleitplanung", "stadtplanung", "flaechennutzungsplan", "flaechennutzungsplaene",
             "baumassnahme", "bauprojekt", "neubau", "sanierung",
+            "stadtumbaugebiet", "planungsbeteiligung",
         ],
         "umwelt": [
             "klimaschutz", "energie", "umwelt", "nachhaltigkeit",
@@ -50,6 +51,8 @@ class DomainModel:
         "verwaltung": [
             "satzung", "verordnung", "beschluss", "gemeinderat",
             "sitzung", "protokoll", "ausschuss", "wahl",
+            "amtsblatt", "bekanntmachung", "bekanntmachungen",
+            "ausschreibung", "ausschreibungen",
         ],
     }
 
