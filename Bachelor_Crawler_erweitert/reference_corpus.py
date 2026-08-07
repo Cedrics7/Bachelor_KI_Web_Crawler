@@ -28,6 +28,23 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 
+def _normalize_for_compare(url: str) -> str:
+    """
+    Zentrale Normalisierungsfunktion fuer URL-Vergleiche zwischen
+    Crawler-Ergebnissen und Goldstandard-Eintraegen.
+
+    Entfernt: Trailing Slash, Query-Parameter, 'www.'-Praefix,
+    und vereinheitlicht Gross-/Kleinschreibung.
+    """
+    u = url.strip().rstrip("/")
+    if "?" in u:
+        u = u.split("?")[0]
+    u = u.lower()
+    # www.-Praefix entfernen (nach dem Schema, z. B. https://www.leer.de -> https://leer.de)
+    u = u.replace("://www.", "://")
+    return u
+
+
 @dataclass
 class CorpusEntry:
     """
@@ -46,11 +63,8 @@ class CorpusEntry:
     notiz: str = ""
 
     def normalized_url(self) -> str:
-        """Gibt die URL ohne Trailing Slash und ohne Query-Parameter zurueck."""
-        url = self.url.rstrip("/")
-        if "?" in url:
-            url = url.split("?")[0]
-        return url.lower()
+        """Gibt die URL normalisiert zurueck (siehe _normalize_for_compare)."""
+        return _normalize_for_compare(self.url)
 
 
 class ReferenceCorpus:
@@ -113,16 +127,24 @@ class ReferenceCorpus:
         if self.total_relevant == 0:
             return 0.0
 
-        # Normalisierung
-        crawled_normalized = set()
-        for url in crawled_urls:
-            u = url.rstrip("/")
-            if "?" in u:
-                u = u.split("?")[0]
-            crawled_normalized.add(u.lower())
-
+        crawled_normalized = {_normalize_for_compare(u) for u in crawled_urls}
         found_relevant = self.relevant_urls & crawled_normalized
-        return round(len(found_relevant) / self.total_relevant, 4)
+        recall = round(len(found_relevant) / self.total_relevant, 4)
+
+        # Diagnose: wenn Recall trotz vorhandenem Goldstandard und vorhandenen
+        # gecrawlten URLs exakt 0.0 ist, liegt hoechstwahrscheinlich ein
+        # Domain-Mismatch oder Formatierungsfehler vor. Beispiele ausgeben,
+        # damit die Ursache sofort sichtbar ist statt stillschweigend 0.0.
+        if recall == 0.0 and crawled_normalized:
+            gs_sample = list(self.relevant_urls)[:3]
+            crawled_sample = list(crawled_normalized)[:3]
+            print("  [GOLDSTANDARD-DEBUG] Recall=0.0 trotz vorhandener Daten:")
+            print(f"    Goldstandard-Domain:   {self.domain}")
+            print(f"    Goldstandard-Beispiele: {gs_sample}")
+            print(f"    Gecrawlte Beispiele:    {crawled_sample}")
+            print("    -> Pruefe ob beide Domains identisch sind (z.B. Stadt vs. Landkreis)")
+
+        return recall
 
     def compute_f1(self, precision: float, crawled_urls: List[str]) -> float:
         """
