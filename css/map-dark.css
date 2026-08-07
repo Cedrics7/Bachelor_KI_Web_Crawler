@@ -1,0 +1,74 @@
+/* =============================================================
+   map-dark.css — Dark-Mode-Overrides für Leaflet-UI-Elemente
+   Leaflet liefert seine Zoom-Buttons/Attribution fest weiß/schwarz
+   aus leaflet.css aus — das reagiert nicht auf unser Theme-System.
+   Diese Overrides greifen nur, wenn html.dark gesetzt ist.
+
+   Update: Dark Mode nutzt jetzt KEINEN zweiten Kartendienst mehr
+   (CARTO Dark Matter zeigte englische/internationale Ortsnamen statt
+   der deutschen OSM-Namen). Stattdessen wird die einzige (deutsche)
+   OSM-Kachel-Ebene per CSS-Filter optisch verdunkelt — dadurch bleiben
+   Beschriftungen in Light/Dark garantiert identisch.
+   ============================================================= */
+
+/* Kachel-Ebene per Filter verdunkeln, wenn die Karte im Dark Mode ist
+   (Klasse wird von map.js über setMapTheme() gesetzt). Popups/Marker/
+   Umriss bleiben unverändert (kein image-rendering, kein tile-pane-
+   Filter darauf), da nur .leaflet-tile-pane gefiltert wird. */
+.leaflet-container.map-tiles-dark .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.85);
+}
+
+html.dark .leaflet-control-zoom a {
+    background-color: var(--dashboard-bg-card, #191919);
+    color: var(--dashboard-text, #ffffff);
+    border-color: var(--dashboard-border, #444444);
+}
+
+html.dark .leaflet-control-zoom a:hover {
+    background-color: var(--dashboard-bg-page, #000000);
+}
+
+html.dark .leaflet-control-zoom-in,
+html.dark .leaflet-control-zoom-out {
+    border-color: var(--dashboard-border, #444444) !important;
+}
+
+html.dark .leaflet-bar {
+    border-color: var(--dashboard-border, #444444);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.6);
+}
+
+html.dark .leaflet-control-attribution {
+    background-color: rgba(25, 25, 25, 0.8);
+    color: var(--dashboard-text-muted, rgba(255, 255, 255, 0.55));
+}
+
+html.dark .leaflet-control-attribution a {
+    color: var(--dashboard-text, #ffffff);
+}
+
+html.dark .leaflet-popup-content-wrapper,
+html.dark .leaflet-popup-tip {
+    background-color: var(--dashboard-bg-card, #191919);
+    color: var(--dashboard-text, #ffffff);
+}
+
+html.dark .leaflet-popup-content a {
+    color: #ff4fa8;
+}
+
+/* Sanfter Übergang beim Theme-Wechsel, analog zum restlichen Dashboard */
+.leaflet-control-zoom a,
+.leaflet-control-attribution,
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+    transition:
+        background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.leaflet-tile-pane {
+    transition: filter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}

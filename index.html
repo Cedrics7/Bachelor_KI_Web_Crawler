@@ -10,6 +10,10 @@
     <link rel="stylesheet" href="node_modules/@telekom/scale-components/dist/scale-components/scale-components.css" />
     <script type="module" src="node_modules/@telekom/scale-components/dist/scale-components/scale-components.esm.js"></script>
 
+    <!-- Leaflet (kein integrity-Attribut, um SRI-Blockierung zu vermeiden) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <!-- Dashboard Styles -->
     <link rel="stylesheet" href="css/tokens.css" />
     <link rel="stylesheet" href="css/base.css" />
@@ -29,6 +33,7 @@
             <div class="nav-links">
                 <span onclick="updateUrl('bestandsdaten')"  id="nav-bestandsdaten"  class="nav-link active">Bestandsdaten</span>
                 <span onclick="updateUrl('bewegungsdaten')" id="nav-bewegungsdaten" class="nav-link">Bewegungsdaten</span>
+                <span onclick="updateUrl('karte')"          id="nav-karte"          class="nav-link">Karte</span>
                 <span onclick="updateUrl('monitoring')"     id="nav-monitoring"     class="nav-link">Monitoring</span>
             </div>
         </div>
@@ -139,6 +144,14 @@
             </div>
         </div>
 
+        <!-- KARTE -->
+        <div id="page-karte" class="page-content hidden">
+            <h1 class="page-title">Kartenansicht</h1>
+            <div class="scale-card" style="padding:0;overflow:hidden;border-radius:8px">
+                <div id="map" style="height:600px;width:100%;"></div>
+            </div>
+        </div>
+
         <!-- MONITORING -->
         <div id="page-monitoring" class="page-content hidden">
             <h1 class="page-title monitoring-title">Crawler Live-Monitoring</h1>
@@ -212,6 +225,7 @@
     <script src="js/theme.js"></script>
     <script src="js/api.js"></script>
     <script src="js/render.js"></script>
+    <script src="js/map.js"></script>
     <script src="js/router.js"></script>
 </body>
 </html>

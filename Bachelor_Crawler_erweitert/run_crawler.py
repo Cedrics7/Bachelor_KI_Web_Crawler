@@ -3,6 +3,9 @@ Einstiegspunkt für Bachelor_Crawler_erweitert.
 Lädt alle Ziel-URLs aus der Tabelle crawl_targets (PostgreSQL)
 und crawlt sie der Reihe nach (last_scanned ASC NULLS FIRST).
 
+Nach jedem vollständigen Durchlauf wird geocode_targets.py ausgeführt,
+um fehlende Koordinaten nachzupflegen und die Kartendaten aktuell zu halten.
+
 Alle Parameter kommen aus DEFAULT_CONFIG (config.py / .env):
     CRAWLER_DB_ENABLED=true
     CRAWLER_MAX_PAGES=50              # Seiten pro Kommune
@@ -110,6 +113,35 @@ def _update_last_scanned(conn, ags: str) -> None:
     conn.commit()
 
 
+def _run_geocoding() -> None:
+    """
+    Führt geocode_targets.py aus, um nach dem Crawler-Durchlauf fehlende
+    Koordinaten in crawl_targets nachzupflegen und die Kartendaten aktuell
+    zu halten. Fehler werden nur geloggt, damit der Crawler-Prozess nicht
+    abbricht.
+    """
+    try:
+        import importlib
+        import sys
+        import os
+
+        # Pfad zum Repo-Root (eine Ebene über diesem Package)
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        geocode_path = os.path.join(repo_root, 'geocode_targets.py')
+
+        spec = importlib.util.spec_from_file_location('geocode_targets', geocode_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # geocode_targets.py definiert eine main()-Funktion oder läuft beim Import
+        if hasattr(module, 'main'):
+            module.main()
+
+        logger.info('🌍 Geocoding abgeschlossen – Kartendaten aktualisiert.')
+    except Exception as exc:
+        logger.warning('Geocoding nach Durchlauf fehlgeschlagen (nicht kritisch): %s', exc)
+
+
 # ============================================================
 # Haupt-Loop
 # ============================================================
@@ -203,6 +235,10 @@ def run_all() -> None:
             conn.close()
         except Exception:
             pass
+
+    # --- Kartendaten nach jedem Durchlauf aktualisieren ---
+    logger.info('=== Starte Geocoding zur Aktualisierung der Kartendaten ===')
+    _run_geocoding()
 
     logger.info('=== Fertig: %d/%d Kommunen verarbeitet ===', total, total)
 
