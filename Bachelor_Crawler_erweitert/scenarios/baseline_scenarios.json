@@ -9,7 +9,7 @@
   },
   {
     "label": "Saarlouis",
-    "seed_url": "https://www.kreis-saarlouis.de/",
+    "seed_url": "https://www.saarlouis.de/",
     "max_pages": 60,
     "reference_corpus_size": 8,
     "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/saarlouis.json",
