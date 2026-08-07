@@ -47,14 +47,13 @@ _SKIP_URL_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-_PDF_URL_RE = re.compile(r'https?://[^\s"<>]+\.pdf', re.IGNORECASE)
-
 # Maximale erlaubte Pfadtiefe relativ zur Start-URL.
 _MAX_PATH_DEPTH = 8
 
 # Mindest-Sleep zwischen HTTP-Requests (Sekunden).
-# Verhindert "Server disconnected" bei Kommunal-Domains die Rate-Limiting haben.
 _DEFAULT_REQUEST_SLEEP = 0.5
+
+_PDF_URL_RE = re.compile(r'https?://[^\s"<>]+\.pdf', re.IGNORECASE)
 
 
 def _is_skip_url(url: str) -> bool:
@@ -166,7 +165,6 @@ class FocusedCrawler:
                     evaluator.add_skipped()
                     continue
 
-                # --- Skip: bereits besucht / sensibler Pfad
                 curr_base = self._get_url_base(curr_url)
                 if curr_base in visited_urls or self._privacy.is_sensitive_url(curr_url):
                     evaluator.add_skipped()
@@ -174,7 +172,6 @@ class FocusedCrawler:
                     continue
                 visited_urls.add(curr_base)
 
-                # --- RAM-Monitoring
                 mem_mb = self._get_rss_mb()
                 if mem_mb > self._config['ram_warn_mb']:
                     self._logger.crawl_step(
@@ -183,7 +180,6 @@ class FocusedCrawler:
                         queue_size=len(queue),
                     )
 
-                # --- robots.txt
                 if self._robots and not self._robots.is_allowed(curr_url):
                     evaluator.add_robots_blocked()
                     self._logger.crawl_step(curr_url, 'ROBOTS')
@@ -211,7 +207,6 @@ class FocusedCrawler:
                 final_url = str(resp.url)
                 final_domain = urlparse(final_url).netloc
 
-                # --- VG-Redirect-Erkennung (erster Request)
                 if first_request:
                     first_request = False
                     if (
@@ -226,7 +221,6 @@ class FocusedCrawler:
                             effective_start_path=effective_start_path,
                         )
 
-                # --- Domain-Guard
                 if self._strip_www(final_domain) != self._strip_www(effective_domain):
                     self._logger.privacy(
                         curr_url, 'DOMAIN_GUARD', f'Externe Domain: {final_domain}'
@@ -236,7 +230,6 @@ class FocusedCrawler:
                 if resp.status_code != 200:
                     continue
 
-                # --- Hash-Duplikat (innerhalb eines Laufs)
                 is_pdf = curr_url.lower().endswith('.pdf')
                 content_hash = hashlib.sha256(resp.content).hexdigest()
                 if content_hash in visited_hashes:
@@ -245,7 +238,6 @@ class FocusedCrawler:
                     continue
                 visited_hashes.add(content_hash)
 
-                # --- Extraktion
                 if is_pdf:
                     text = self._extract_pdf_text_bytes(resp.content)
                     blocks, new_links = [], []
@@ -256,7 +248,6 @@ class FocusedCrawler:
                     )
                 else:
                     raw_html = resp.text
-                    # JS-Rendering
                     if self._config.get('js_rendering') and self._is_js_rendered(raw_html):
                         self._logger.crawl_step(curr_url, 'JS')
                         js_html = self._fetch_with_playwright(curr_url)
@@ -267,9 +258,6 @@ class FocusedCrawler:
                         raw_html, curr_url, effective_domain, effective_start_path
                     )
 
-                    # --- CPE Link-Priorisierung
-                    # PDFs werden NICHT vorne in die Queue einsortiert.
-                    # Sie kommen ans Ende, damit HTML-Seiten das Budget nicht verlieren.
                     scored_links = self._prioritizer.score_links(
                         new_links, page_text=text
                     )
@@ -306,7 +294,6 @@ class FocusedCrawler:
                         blocks=len(blocks),
                     )
 
-                # --- DSGVO-PII-Filter
                 if self._config['privacy_filter_pii']:
                     filtered, n_replacements = self._privacy.filter_text_counted(
                         text, source_url=curr_url
@@ -319,7 +306,6 @@ class FocusedCrawler:
                         )
                     text = filtered
 
-                # --- Relevanzklassifikation (TF-IDF + BCW)
                 relevance = self._classifier.classify(text=text, url=curr_url)
                 self._logger.relevance(
                     url=curr_url,
@@ -351,14 +337,19 @@ class FocusedCrawler:
                 results.append(result)
                 evaluator.add_result(relevance, is_pdf=is_pdf)
 
-                # --- DB-Speicherung
+                # --- DB-Speicherung:
+                # Gate 1: TF-IDF/BCW relevance.is_relevant == True
+                # Gate 2: LLM hat mindestens eine Maßnahme gefunden
+                #         (falls kein LLM aktiv, reicht Gate 1 allein)
                 if self._db and relevance.is_relevant:
                     llm_confirmed = (
                         llm_result is None
                         or llm_result.get('relevant', False) is True
                     )
                     if llm_confirmed:
+                        # Rohlog in crawl_results_bachelor
                         self._db.save_result(self._run_id, result)
+                        # LLM-Maßnahmen in crawl_results (wie crawler_js)
                         if llm_result is not None and len(llm_result.get('massnahmen', [])) > 0:
                             self._db.save_llm_result(
                                 ags=ags,
@@ -390,16 +381,13 @@ class FocusedCrawler:
         effective_start_path: str,
     ) -> Tuple[str, List[str], List[Tuple[str, str, str]]]:
         soup = BeautifulSoup(html, 'html.parser')
-        for tag in soup.find_all(['script', 'style', 'nav', 'footer', 'header']):
-            tag.decompose()
-        full_text = soup.get_text(separator=' ', strip=True)
-        blocks = []
-        for block_tag in soup.find_all(['div', 'section', 'article', 'main']):
-            block_text = block_tag.get_text(separator=' ', strip=True)
-            if len(block_text) > 100:
-                score, _ = self._domain_model.score_text(block_text)
-                if score > 0.05:
-                    blocks.append(block_text[:500])
+
+        # --- Link-Extraktion ZUERST, BEVOR nav/header/footer entfernt werden.
+        # Wichtige Seiten (Bebauungsplaene, Amtsblatt, Satzungen etc.) sind bei
+        # vielen Gemeinde-Websites (z.B. WordPress-Themes) ausschliesslich ueber
+        # das Hauptnavigationsmenue verlinkt. Wuerde man <nav>/<header>/<footer>
+        # vor der Link-Extraktion entfernen, wuerden diese Links nie in die
+        # Crawl-Queue gelangen - unabhaengig von Crawl-Modus oder Seitenbudget.
         bs_links = []
         for a_tag in soup.find_all('a', href=True):
             href = a_tag.get('href', '').strip()
@@ -415,6 +403,7 @@ class FocusedCrawler:
                 continue
             if _is_skip_url(full_url):
                 continue
+            # Fragment-URLs normalisieren (ohne #fragment)
             clean_url = urlunparse((
                 parsed.scheme, parsed.netloc, parsed.path,
                 parsed.params, parsed.query, ''
@@ -425,16 +414,32 @@ class FocusedCrawler:
                 parent.get_text(separator=' ', strip=True)[:300] if parent else ''
             )
             bs_links.append((clean_url, anchor_text, context))
+
         regex_links = []
         for raw_url in _PDF_URL_RE.findall(html):
             if urlparse(raw_url).netloc == effective_domain:
                 regex_links.append((raw_url, 'PDF', 'regex_pdf_scan'))
+
         seen: set = set()
         links = []
         for item in bs_links + regex_links:
             if item[0] not in seen:
                 seen.add(item[0])
                 links.append(item)
+
+        # --- Text-/Relevanzextraktion: nav/header/footer erst JETZT entfernen,
+        # damit Navigationsrauschen nicht in die TF-IDF/BCW-Klassifikation einfliesst.
+        for tag in soup.find_all(['script', 'style', 'nav', 'footer', 'header']):
+            tag.decompose()
+        full_text = soup.get_text(separator=' ', strip=True)
+        blocks = []
+        for block_tag in soup.find_all(['div', 'section', 'article', 'main']):
+            block_text = block_tag.get_text(separator=' ', strip=True)
+            if len(block_text) > 100:
+                score, _ = self._domain_model.score_text(block_text)
+                if score > 0.05:
+                    blocks.append(block_text[:500])
+
         soup.decompose()
         return full_text, blocks[:10], links
 
