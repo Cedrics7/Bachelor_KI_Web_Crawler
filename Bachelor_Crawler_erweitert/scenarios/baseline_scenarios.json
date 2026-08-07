@@ -8,8 +8,8 @@
     "notes": "Mittelgrosse Niedersachsen-Stadt (Ostfriesland); keine restriktive robots.txt, gute Linkdichte"
   },
   {
-    "label": "Rotenburg",
-    "seed_url": "https://www.rotenburg-wuemme.de",
+    "label": "Saarlouis",
+    "seed_url": "https://www.kreis-saarlouis.de/",
     "max_pages": 60,
     "reference_corpus_size": 8,
     "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/rotenburg.json",

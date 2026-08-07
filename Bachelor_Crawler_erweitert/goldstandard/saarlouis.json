@@ -1,0 +1,1320 @@
+{
+  "domain": "saarlouis.de",
+  "annotator": "Cedric Sperling (manuelle Recherche) + KI-Analyse (Sitemap-Abgleich)",
+  "date": "2026-08-07",
+  "abgleich_methodik": "TXT-Datei (manuelle Recherche) gilt als Ground Truth fuer Kategorie-/Oberseiten. Bei Konflikt mit KI-Analyse (Markdown/JSON) wird die manuelle Einschaetzung uebernommen und die KI-Klassifikation korrigiert (siehe 'quelle' und 'notiz' je Eintrag). Alle anderen KI-Einzelartikel-Bewertungen ohne manuellen Gegenpart wurden unveraendert uebernommen.",
+  "total_entries": 187,
+  "total_relevant": 69,
+  "konflikte_geloest": 21,
+  "entries": [
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/",
+      "relevant": true,
+      "kategorie": "verwaltung",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/amtliche-bekanntmachungen-allgemein/",
+      "relevant": true,
+      "kategorie": "verwaltung",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/amtliche-bekanntmachungen-bauen/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/ausschreibungen/",
+      "relevant": true,
+      "kategorie": "verwaltung",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "Manuell bestaetigt: relevant (Oberkategorie)",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/ausschreibungen/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/bauleitplanung/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/geforderte-massnahmen/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/stadtebauforderung/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/bekanntmachungen/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/mobilitat/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "Manuell bestaetigt: relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/sanierungsgebiete/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "Manuell bestaetigt: SEHR relevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/karriere/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "Manuell bestaetigt: irrelevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtpolitik/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "Manuell bestaetigt: irrelevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtverwaltung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "Manuell bestaetigt: irrelevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/wahlen/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "Manuell bestaetigt: irrelevant",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/leben-in-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "Manuell bestaetigt: irrelevant (ganzer Bereich)",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KONFLIKT geloest zugunsten manueller Recherche: irrelevant (KI hatte Klima-Unterseiten faelschlich als 'umwelt'-relevant markiert)",
+      "quelle": "manuell"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-im-bereich-friedensweg-wechsel-des-bauabschnitts/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-im-bereich-der-kreuzbergstrasse-58-106/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-in-roden-und-fraulautern/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-husarenweg/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/update-kanalsanierung-husarenweg/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalisationsarbeiten-in-roden-und-fraulautern/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-in-der-innenstadt/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-in-fraulautern/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/update-zur-kanalsanierung-in-fraulautern/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalbauarbeiten-im-bereich-der-st-nazairer-allee/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalerneuerung-in-der-kreuzstrasse/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-des-entsorgungsverband-saar-evs/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/reparaturarbeiten-an-der-offentlichen-kanalisation-in-der-strasse-am-romerberg/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/entsorgungsverband-saar-saniert-den-hauptsammler-schulzentrum-in-saarlouis/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalinspektionen-fuhren-zeitweise-zu-einschrankungen-in-der-innenstadt/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalbau-in-der-gatterstrasse-bauarbeiten-starten-im-april/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-im-bereich-vogelsang/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalsanierung-im-bereich-st-nazairer-allee-und-neue-brauerei-strasse/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kanalerneuerung-in-der-gatterstrasse-vollsperrung-im-einmundungsbereich-zur-lisdorfer-strasse/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadtwerke-saarlouis-schliessen-ersten-privatkunden-an-eigenes-glasfasernetz-an/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadtwerke-saarlouis-und-kreisstadt-kooperieren-bei-glasfaser/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadtwerke-saarlouis-bauen-glasfasernetz-aus-flachendeckender-start-in-picard/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadtwerke-saarlouis-spatenstich-zum-start-des-glasfaserausbaus-in-picard/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/glasfaserausbau-im-gewerbegebiet-metzer-wiesen-kreisstadt-saarlouis-kritisiert-vorgehensweise-des-auftraggebers/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadtwerke-saarlouis-starten-glasfaserausbau-in-neuforweiler/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/glasfaserausbau-in-beaumarais-verkehrseinschrankungen-ab-11-mai/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/glasfaserarbeiten-in-weisskreuzstrasse-und-karcherstrasse-ab-15-juni/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/digitalisierung/5g-ausbau/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/digitalisierung/glasfaser-in-grundschulen/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/der-saaraltarm-wird-smart-projekt-5g-sls-ermoglicht-mitlaufende-beleuchtung/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/abschlussveranstaltung-5g-sls/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/bauleitplanung/rechtskraftige-bebauungsplane/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/bauleitplanung/flachennutzungsplan-2023/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/bekanntmachungen/amtliche-bekanntmachungen-bauen/bebauungsplan-volkspark-roden-mit-paralleler-flachennutzungsplan-teilanderung/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/bekanntmachungen/amtliche-bekanntmachungen-bauen/bebauungsplan-wohngebiet-ostlich-auf-der-wies/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/baugenehmigungsverfahren-in-rekordtempo-ob-speicher-unterzeichnet-bauantrag-fur-vetter/",
+      "relevant": true,
+      "kategorie": "bauen",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/vetter-startet-bau-des-neuen-produktionsstandorts-in-saarlouis/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/pharma-unternehmen-vetter-baut-neues-werk-auf-ford-gelande/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/okologisches-industriegebiet-erweiterung-lisdorfer-berg-schafft-raum-fur-neue-arbeitsplatze-und-starke-wirtschaft/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/isl-automotive-gmbh-baut-neues-logistik-fulfillment-center-auf-dem-lisdorfer-berg/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/starkung-bankenstandort-und-50-neue-arbeitsplatze-kommen-nach-saarlouis-offizielle-eroffnung-der-neuen-verwaltungsraume-der-vereinigten-volksbank-eg-in-saarlouis/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/vor-ort-bei-meguin-hidden-champion-made-in-saarlouis/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/wirtschaftsforderung-unternehmensbesuch-im-neuen-kfz-meisterbetrieb/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/wirtschaft/wirtschaftsforderung/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/wirtschaft/lisdorfer-berg/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/wirtschaft/standortdaten/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/wirtschaft/gewerbeimmobilien/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/urheber-wirtschaftlichen-erfolgs-und-der-nobilia-ansiedlung-in-saarlouis-einweihung-werner-stickling-strasse/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/neue-bundesbehorde-fur-saarlouis/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/finkler-und-speicher-frontrunner-der-transformation-durfen-nicht-benachteiligt-werden/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/grunes-licht-fur-grunen-stahl-dillingen-und-saarlouis-machen-den-weg-frei-fur-co2-arme-stahlproduktion/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kampfen-gemeinsam-fur-die-saarlandische-stahlindustrie-ob-marc-speicher-trifft-gesamtbetriebsrat-von-dillinger/",
+      "relevant": true,
+      "kategorie": "wirtschaft",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/saarlouis-wird-die-chance-haben-kernregion-fur-wasserstoff-zu-werden-oberburgermeister-marc-speicher-im-austausch-mit-geschaftsfuhrern-von-creos-deutschland/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/energieeffiziente-strassenbeleuchtung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/klimaneutrale-warmenutzung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/biomassefeuerungsanlage/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/kommunale-warmeplanung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/kommunale-warmeplanung/massnahmen-im-uberblick/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/kommunale-warmeplanung/fragen-und-antworten/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/kommunale-warmeplanung/modernisierungs-check/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/klimaanpassungskonzept/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/stadtklimaanalyse/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/projekt-livablecities/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/stark/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/infomaterial-fordermoglichkeiten/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/klima/ag-klimastark-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/warme-der-zukunft-europastadt-saarlouis-startet-kommunale-warmeplanung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/einladung-zur-vorstellung-des-saarlouiser-warmeplans-13-01-26-18-00-uhr-festsaal-theater-am-ring/",
+      "relevant": true,
+      "kategorie": "umwelt",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/offenlage-des-saarlouiser-warmeplans-30-tage-zur-stellungnahme/",
+      "relevant": true,
+      "kategorie": "umwelt",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/offenlegung-des-saarlouiser-warmeplans/",
+      "relevant": true,
+      "kategorie": "umwelt",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadt-saarlouis-setzt-beteiligungsprozess-zur-kommunalen-warmeplanung-fort/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadt-saarlouis-im-dialog-burgerinnen-und-burger-gestalten-kommunale-warmeplanung-mit/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/saarlouiser-warmeplan-beschlossen-wegweiser-zur-warmewende-in-saarlouis/",
+      "relevant": true,
+      "kategorie": "umwelt",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadt-saarlouis-arbeitet-an-einer-nachhaltigkeitsstrategie/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/drittes-steuerungsgruppentreffen-der-saarlouiser-nachhaltigkeitsstrategie/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/gemeinsam-fur-ein-gruneres-saarlouis-stadt-fordert-entsiegelung-und-okologische-massnahmen/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/europastadt-saarlouis-unterstutzt-private-eigentumer-bei-der-gebaudemodernisierung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI stufte dies als 'umwelt'-relevant ein, Manuell-Recherche widerspricht (kompletter Klima-Bereich irrelevant) -> korrigiert",
+      "quelle": "KI-korrigiert"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/stadtentwicklung/mobilitat/radverkehr-in-saarlouis-forderung-massnahmen-angebote/",
+      "relevant": true,
+      "kategorie": "infrastruktur",
+      "notiz": "KI-Analyse uebernommen (kein Konflikt mit manueller Recherche)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/frauen-verstehen-ihr-handwerk-siegerin-des-fotowettbewerbes-im-theater-am-ring-gekurt/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/elefant-vor-dem-stadtkrug-brachte-5-050-euro-fur-kunstler-in-not/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/sternensinger-zu-gast-im-rathaus/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/barrierefrei-im-hallenbad-beauftragte-fur-menschen-mit-behinderung-besucht-aqualouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/wichtig-an-traditionen-festzuhalten-franzosische-honorarkonsulin-myriam-bouchon-uberreicht-die-galette-des-rois/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/fuhrungen-uber-den-friedhof-neue-welt/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/frauen-wehren-sich-erfolgreich/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/kinofilmreihe-starke-frauen-startet-am-2-marz/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/rathaus-schliesst-an-rosenmontag/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/madelsabend-der-stadtbibliothek-saarlouis-und-der-buchhandlung-bock-seip/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/osterkirmes-in-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/landtagswahl-ergebnisse-fur-die-kreisstadt-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/positive-bilanz-des-saarlouiser-ostermarktes/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/16-neue-truppfuhrer-in-der-feuerwehr-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/lesung-menschen-und-unmenschen/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/hunde-und-halter-glucklich-hundefreilaufflache-am-saaraltarm-eroffnet/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/freie-stellen-fur-bundesfreiwillige/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/veranstaltungen-des-literaturfestivals-erlesen-2022-in-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/gemeinsam-feiern-in-saarlouis-saarlouiser-woche-n-mit-traditionellen-und-neuen-formaten/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/rathaus-und-nebengebaude-maskenpflicht-entfallt/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/sdkv-saarlouis-sagt-jubilaumskonzert-ab/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/fur-immer-im-herzen-seiner-stadt-roland-henz-platz-ehrt-unvergessenen-oberburgermeister/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/gespinstmotte-wieder-in-saarlouis-aktiv/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/klingender-ludwigspark-entfallt/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/1-rodener-quartiersfest-27-und-28-mai/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/petit-montmartre-kunst-am-brunnen/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/mundartabend-im-theater-am-ring/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/auch-mit-100-jahren-noch-spass-an-bewegung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/postkartenaktion-mehr-vater-in-elternzeit-mut-zum-abenteuer-papa-sein/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/schogetten-fraulauterner-stuhl-und-einige-mehr/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/vereinigung-italienischer-familien-feiert-erstes-kinder-und-familienfest/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/vier-saarlouiser-platze-erinnern-an-verdiente-frauen-der-stadtgeschichte/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadtverband-kultur-ladt-zur-neujahrs-gala/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/post-mit-erinnerungswert/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/saarlouiser-weihnachtsmarkt-2022-eroffnet/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/internationaler-tag-gegen-gewalt-an-frauen/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/standplatzbewerbung-zur-saarlouiser-emmes-2023/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/ideenwettbewerb-zeigt-wie-der-grosse-markt-einmal-aussehen-konnte/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/herzlichen-gluckwunsch-nach-roden-donatuszentrum-feierte-seinen-ersten-geburtstag/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/alles-gute-im-neuen-jahr-wunscht-ob-peter-demmer/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/auszeichnung-fur-michel-bouchon-ein-freund-der-deutsch-franzosischen-freundschaft/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/erste-hilfe-kurs-fur-menschen-mit-handicap-in-einfacher-sprache/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/2023-gebuhrend-begrusst-sdkv-bringt-grossartiges-musik-fest-auf-die-theater-buhne/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/selbstbehauptungs-und-selbstverteidigungskurs-fur-frauen-2023/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/online-umfrage-zu-starkregen/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/sternsinger-zu-gast-im-rathaus/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stadtmeisterschaft-im-hallenfussball-sportlicher-start-ins-neue-jahr/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/fuhrung-st-ludwig-am-samstag-21-januar/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/saarlouiser-toleranztage/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/fruhjahrsprogramm-aktiv-alter-werden-startet-ins-erste-halbjahr/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/oberburgermeister-peter-demmer-zu-gast-in-longwy/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/bunter-rosenmontag-im-beaumaraiser-dorfhaus/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/podiumsdiskussion-mit-mo-asumang-henri-juda-und-mohammed-maiga/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/saarlouiser-narren-ziehen-mit-neuem-konzept-vors-gericht-auf-der-anklagebank-die-verwaltungsspitze-hochstpersonlich/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/offnungszeiten-an-der-faasend/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/ein-bunter-mix-aus-ehrung-und-show/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/schockschwerenot-die-narren-sind-zuruck/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/back-to-the-70-s-kochkurs-in-der-familienbildungsstatte/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/madelsabend-der-stadtbibliothek-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/geanderte-offnungszeiten-der-stadtbibliothek-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/leitfaden-fur-diskriminierungsfreie-werbung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/freiwilliges-burgerliches-ehrenamt-ist-eben-keine-privatangelegenheit/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/umtausch-papierfuhrerscheine-der-geburtsjahrgange-1965-bis-1970/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/sportparty-2023/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/wir-vergessen-euch-nicht-ein-verkehrs-kreisel-im-zeichen-der-demenz-erkrankung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/ostermarkt-und-krammarkt-in-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/spendenaktion-zum-weltfrauentag/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/komm-als-bufdi-zur-stadt-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/mullabfuhr-in-fraulautern/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/bilderbuchkino-der-stadtbibliothek-saarlouis-in-den-osterferien/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/offnungszeiten-aqualouis-uber-ostern/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/souveran-durchs-berufsleben-selbstbewusst-zum-erfolg/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/veranstaltungsreihe-cosmic-kiss-the-world-at-night-planetarium/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/die-kreisstadt-saarlouis-wunscht-frohe-ostern-und-schone-feiertage/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/das-aussergewohnliche-leben-von-octave-pelletier-spion-olivenol-handler-in-nizza-und-hypnotiseur-in-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/platanen-auf-dem-grossen-markt-werden-zuruckgeschnitten/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/verkurzte-offnungszeit-im-aqualouis-durch-landeskinderschwimmfest/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/so-schmeckt-der-fruhling/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/eine-besondere-ausstellungseroffnung-zum-thema-frauen-verstehen-ihr-handwerk/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/stolpersteinverlegung-in-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/bilderbuchkino-mit-rabe-socke-in-der-stadtbibliothek-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/schliesstag-im-aqualouis-am-17-mai-2023/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/familienaktionstag-am-26-mai-2023-aufruf-zur-kuchenspende/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/grossartige-frauen-in-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/emmes-2023-angebot-fur-rollstuhlfahrer-innen/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/sportlicher-start-ins-neue-jahr-hallenfussball-stadtmeisterschaften-der-jugend-und-der-aktiven/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/veranstaltungskalender-2024/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/max-ophuls-festival-macht-auch-dieses-jahr-station-in-saarlouis/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/erster-hundesalon-fur-die-saarlouiser-innenstadt/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/aktionstag-gegen-gewalt-an-madchen-und-frauen/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    },
+    {
+      "url": "https://www.saarlouis.de/rathaus/aktuelle-informationen/pressemeldungen/glatteiswarnung/",
+      "relevant": false,
+      "kategorie": "",
+      "notiz": "KI-Analyse uebernommen (kein Projektbezug)",
+      "quelle": "KI-uebernommen"
+    }
+  ]
+}

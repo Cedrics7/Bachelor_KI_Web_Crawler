@@ -175,7 +175,7 @@ class ReferenceCorpus:
         print(f"Goldstandard gespeichert: {p} ({self.total_relevant} relevante Seiten)")
 
     @classmethod
-    def from_json(cls, path: str) -> "ReferenceCorpus"
+    def from_json(cls, path: str) -> "ReferenceCorpus":
         """Laedt einen Goldstandard aus einer JSON-Datei."""
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
