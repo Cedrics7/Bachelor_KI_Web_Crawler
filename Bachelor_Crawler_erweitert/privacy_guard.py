@@ -7,7 +7,10 @@ from typing import Any, Tuple
 _RE_EMAIL = re.compile(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', re.IGNORECASE)
 _RE_PHONE = re.compile(r'(?:(?:\+49|0049|0)[\s\-.]?)?(?:\(?\d{2,5}\)?[\s\-.]?)?\d{3,}[\s\-.]?\d{3,}(?:[\s\-.]?\d{1,4})?', re.IGNORECASE)
 _RE_IBAN  = re.compile(r'\b[A-Z]{2}\d{2}(?:\s?[0-9A-Z]{4}){3,7}\b')
-_RE_SVN   = re.compile(r'\b\d{2}[0-3]\d{6}[A-Z]\d{3}\b')
+_RE_SVN = re.compile(
+    r'\b\d{2}[\s\-.]?(?:0[1-9]|[12]\d|3[01])(?:0[1-9]|1[0-2])\d{2}'
+    r'[\s\-.]?[A-Z][\s\-.]?\d{3}\b'
+)
 _RE_SENSITIVE = re.compile(
     r'/login|/auth|/signin|/signup|/register|/account|/profil'
     r'|/admin|/datenschutz|/privacy|/cookie|/tracking'
