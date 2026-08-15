@@ -13,16 +13,21 @@ Implementiert die "Comprehensive Priority Evaluation" (CPE) nach Liu et al. (202
 Jeder der vier Teilscores wird gegen das DomainModel berechnet.
 Links mit hoeherem CPE-Score werden priorisiert in die Queue eingereiht.
 
+URL-Pfad und Query werden vor der Bewertung ueber text_utils.normalize_text(
+..., is_url=True) URL-dekodiert und normalisiert, damit prozentkodierte
+Umlaute (z.B. %C3%A4) korrekt erkannt werden statt als kaputte
+Byte-Sequenzen im Score zu landen.
+
 Wissenschaftliche Basis:
-    Liu, J., Wu, Y., Liu, Z. (2025): CPE – Comprehensive Priority Evaluation
+    Liu, J., Wu, Y., Liu, Z. (2025): CPE - Comprehensive Priority Evaluation
 """
 
-import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from .domain_model import DomainModel
+from .text_utils import normalize_text
 
 
 @dataclass
@@ -32,7 +37,7 @@ class ScoredLink:
 
     Attribute:
         url:           Ziel-URL
-        cpe_score:     Gesamtscore ∈ [0.0, 1.0] (Comprehensive Priority Evaluation)
+        cpe_score:     Gesamtscore in [0.0, 1.0] (Comprehensive Priority Evaluation)
         anchor_score:  Teilscore Ankertext
         context_score: Teilscore Linkkontext
         url_score:     Teilscore URL-Muster
@@ -159,10 +164,15 @@ class LinkPrioritizer:
         """
         Bewertet eine URL anhand ihrer Pfadsegmente und Query-Parameter
         gegen die Domaien-Keywords.
+
+        Pfad und Query werden vor der Bewertung URL-dekodiert (unquote)
+        und normalisiert (Umlaute, Bindestriche -> Leerzeichen), damit
+        prozentkodierte Umlaute (z.B. %C3%A4) korrekt als "ae" erkannt
+        werden statt als kaputte Byte-Sequenzen im Text zu landen.
         """
         parsed = urlparse(url)
-        path_text = re.sub(r"[/_\-]", " ", parsed.path)
-        query_text = re.sub(r"[=&+_\-]", " ", parsed.query)
+        path_text = normalize_text(parsed.path, is_url=True)
+        query_text = normalize_text(parsed.query, is_url=True)
         combined = f"{path_text} {query_text}"
         score, _ = self._model.score_text(combined)
         return score

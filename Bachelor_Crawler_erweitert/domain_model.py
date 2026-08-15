@@ -10,10 +10,15 @@ Verwendung:
     model = DomainModel()
     score, matched = model.score_text("Der neue Bebauungsplan wurde veroffentlicht")
     print(f"Score: {score}, Keywords: {matched}")
+
+Normalisierung (Umlaute, Plural, URL-Encoding) erfolgt zentral ueber
+text_utils.normalize_text() / text_utils.build_keyword_pattern(), damit
+Keywords und Text IMMER konsistent abgeglichen werden.
 """
 
-from typing import Dict, List, Tuple
 import re
+from typing import Dict, List, Tuple
+from .text_utils import normalize_text, build_keyword_pattern
 
 
 class DomainModel:
@@ -66,6 +71,13 @@ class DomainModel:
         for kw_list in self._keywords.values():
             self._all_keywords.update(kw_list)
 
+        # Vorkompilierte, normalisierte Regex-Patterns pro Keyword (Umlaute,
+        # Plural-Endungen und Bindestrich/Leerzeichen-Varianten werden dabei
+        # automatisch beruecksichtigt, siehe text_utils.build_keyword_pattern).
+        self._patterns: Dict[str, List[Tuple[str, re.Pattern]]] = {}
+        for category, kw_list in self._keywords.items():
+            self._patterns[category] = [(kw, build_keyword_pattern(kw)) for kw in kw_list]
+
     def score_text(self, text: str) -> Tuple[float, List[str]]:
         """
         Berechnet TF-IDF- und Bayes-Score (BCW) fuer einen Text.
@@ -75,15 +87,15 @@ class DomainModel:
 
         Returns:
             Tuple (score, matched_keywords):
-                - score: Gesamtscore ∈ [0.0, 1.0]
+                - score: Gesamtscore in [0.0, 1.0]
                 - matched_keywords: Liste der gefundenen Keywords
         """
-        text_lower = text.lower()
+        text_norm = normalize_text(text)
         matched = []
 
-        for category, keywords in self._keywords.items():
-            for kw in keywords:
-                if re.search(rf"\b{kw}\b", text_lower):
+        for category, patterns in self._patterns.items():
+            for kw, pattern in patterns:
+                if pattern.search(text_norm):
                     matched.append((category, kw))
 
         if not matched:
@@ -123,3 +135,7 @@ class DomainModel:
         for kw_list in self._keywords.values():
             all_kws.extend(kw_list)
         return all_kws
+
+    def get_patterns(self, category: str) -> List[Tuple[str, re.Pattern]]:
+        """Gibt die vorkompilierten (Keyword, Pattern)-Paare einer Kategorie zurueck."""
+        return self._patterns.get(category, [])

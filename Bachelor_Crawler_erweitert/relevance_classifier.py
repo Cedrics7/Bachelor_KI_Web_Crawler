@@ -13,11 +13,17 @@ Verwendung:
     classifier = RelevanceClassifier()
     result = classifier.classify(text="Der neue Bebauungsplan wurde veroffentlicht", url="https://...")
     print(f"Score: {result.score}, Relevant: {result.is_relevant}, Kategorie: {result.top_category}")
+
+Hinweis: Sowohl der TF-IDF-Score (aus DomainModel.score_text) als auch der
+Bayes-Score hier werden ueber dieselbe zentrale Normalisierung aus
+text_utils.normalize_text() berechnet, damit beide Score-Komponenten
+konsistent auf Umlaute/Plural/URL-Encoding reagieren.
 """
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from .domain_model import DomainModel
+from .text_utils import normalize_text
 
 
 @dataclass
@@ -28,12 +34,12 @@ class RelevanceResult:
     Attribute:
         url: URL der klassifizierten Seite
         text: Text der Seite (gekuerzt)
-        score: Gesamtscore ∈ [0.0, 1.0]
+        score: Gesamtscore in [0.0, 1.0]
         tfidf_score: TF-IDF-Kosinus-Score (40% Gewichtung)
         bayes_score: Bayes-Score (BCW, 60% Gewichtung)
         is_relevant: True wenn score >= relevance_threshold
         top_category: Kategorie mit hoechstem Score
-        confidence: Confidence ∈ [0.0, 1.0]
+        confidence: Confidence in [0.0, 1.0]
         matched_keywords: Liste der gefundenen Keywords
     """
     url: str
@@ -82,10 +88,12 @@ class RelevanceClassifier:
         """
         tfidf_score, matched = self._model.score_text(text)
 
+        text_norm = normalize_text(text)
         category_scores: Dict[str, float] = {}
         for category in self._model.get_categories():
             cat_keywords = self._model.get_keywords(category)
-            cat_count = sum(1 for kw in cat_keywords if kw.lower() in text.lower())
+            patterns = self._model.get_patterns(category)
+            cat_count = sum(1 for _, pattern in patterns if pattern.search(text_norm))
             category_scores[category] = cat_count / max(1, len(cat_keywords))
 
         top_category = max(category_scores, key=category_scores.get) if category_scores else ""
