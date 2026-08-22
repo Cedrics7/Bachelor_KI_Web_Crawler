@@ -37,7 +37,8 @@ Goldstandard (optional):
 BFS-Modus:
     Die BFS-Baseline verwendet denselben FocusedCrawler, jedoch mit:
       - priority_threshold = 999.0  (kein Link wird als prioritaet eingestuft)
-      - FIFO-Queue (alle Links ans Ende, keine Umordnung)
+      - FIFO-Queue (alle Links ans Ende, keine Umordnung, ueber
+        _enqueue_scored_links() erzwungen)
     Damit crawlt der BFS-Modus in Breitensuche-Reihenfolge ohne
     inhaltliche Priorisierung - exakt die Baseline aus der Literatur.
 
@@ -45,7 +46,23 @@ Exportformat (JSON):
     Jedes Szenario enthaelt 'bfs' und 'focused' als EvaluationReport-Dicts
     sowie 'comparison'-Schluessel mit Delta-Werten fuer den direkten Vergleich.
     Wenn ein Goldstandard vorhanden ist, enthaelt 'goldstandard_stats' die
-    Recall-Werte beider Modi gegen den annotierten Referenzkorpus.
+    Recall-Werte beider Modi gegen den annotierten Referenzkorpus, UND die
+    'comparison'-Deltas (recall_delta/f1_delta) werden dann aus diesen
+    goldstandard-basierten Werten berechnet statt aus der reinen
+    reference_corpus_size-Naeherung in EvaluationReport.recall (siehe FIX
+    unten).
+
+FIX (2026-08-13):
+    1) _BFSCrawler._enqueue_scored_links() ueberschrieb bisher eine Methode,
+       die es in FocusedCrawler gar nicht gab (dort lag die Enqueue-Logik
+       inline im crawl()-Loop) -> der Override war toter Code. Seit dem
+       Refactoring von focused_crawler.py (Methode _enqueue_scored_links()
+       existiert jetzt dort) greift dieser Override tatsaechlich.
+    2) _compare() nutzte fuer recall_delta/f1_delta bisher ausschliesslich
+       EvaluationReport.recall, das bei kleinen reference_corpus_size-Werten
+       fast immer bei 1.0 saettigt und damit keine Trennschaerfe zwischen
+       BFS und Focused liefert. Ist ein Goldstandard vorhanden, werden die
+       Deltas jetzt aus recall_vs_goldstandard/f1_vs_goldstandard berechnet.
 """
 from __future__ import annotations
 
@@ -137,6 +154,12 @@ class _BFSCrawler(_SeedIgnoreRobotsCrawler):
     """
     BFS-Baseline: kein Link gilt als prioritaer, FIFO-Queue.
     Erbt den Seed-robots.txt-Bypass von _SeedIgnoreRobotsCrawler.
+
+    _enqueue_scored_links() ist jetzt eine echte Ueberschreibung der in
+    FocusedCrawler ausgelagerten Methode und wird tatsaechlich aus crawl()
+    heraus aufgerufen (siehe Fix-Hinweis im Moduldocstring). Zusammen mit
+    priority_threshold=999.0 ist das eine doppelte Absicherung fuer reines
+    FIFO-Verhalten ohne inhaltliche Priorisierung.
     """
 
     def __init__(self, config: Optional[Dict] = None, run_id: Optional[str] = None) -> None:
@@ -144,14 +167,12 @@ class _BFSCrawler(_SeedIgnoreRobotsCrawler):
         super().__init__(config=bfs_config, run_id=run_id or 'bfs_baseline')
 
     def _enqueue_scored_links(self, queue: list, scored_links: list, visited_urls: set) -> int:
+        from .focused_crawler import _is_skip_url
         n = 0
         for sl in scored_links:
             if len(queue) >= self._config['max_queue']:
                 break
-            from urllib.parse import urlparse, urlunparse
-            from .focused_crawler import _is_skip_url
-            p = urlparse(sl.url)
-            target_base = urlunparse((p.scheme, p.netloc, p.path.rstrip('/'), '', '', ''))
+            target_base = self._get_url_base(sl.url)
             if target_base in visited_urls or _is_skip_url(sl.url):
                 continue
             queue.append((sl.url, sl.anchor_text, ''))
@@ -267,7 +288,21 @@ def _apply_goldstandard(
     }
 
 
-def _compare(focused: EvaluationReport, bfs: EvaluationReport) -> Dict[str, Any]:
+def _compare(
+    focused: EvaluationReport,
+    bfs: EvaluationReport,
+    focused_gs: Optional[Dict[str, Any]] = None,
+    bfs_gs: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Vergleicht Focused- und BFS-Ergebnisse.
+
+    FIX: recall_delta/f1_delta werden jetzt aus den goldstandard-basierten
+    Werten berechnet, sofern ein Goldstandard vorhanden ist. Die alte
+    EvaluationReport.recall-Naeherung saettigt sonst fast immer bei 1.0
+    und liefert dann konstant recall_delta=0.0 - unabhaengig davon, ob
+    Focused oder BFS tatsaechlich besser abschneidet.
+    """
     def delta(a: float, b: float) -> float:
         return round(a - b, 4)
 
@@ -277,11 +312,32 @@ def _compare(focused: EvaluationReport, bfs: EvaluationReport) -> Dict[str, Any]
             (focused.harvest_rate - bfs.harvest_rate) / bfs.harvest_rate * 100, 2
         )
 
+    use_goldstandard = (
+        focused_gs is not None
+        and bfs_gs is not None
+        and focused_gs.get('goldstandard_available')
+        and bfs_gs.get('goldstandard_available')
+    )
+
+    if use_goldstandard:
+        recall_delta = delta(
+            focused_gs['recall_vs_goldstandard'], bfs_gs['recall_vs_goldstandard']
+        )
+        f1_delta = delta(
+            focused_gs['f1_vs_goldstandard'], bfs_gs['f1_vs_goldstandard']
+        )
+        recall_source = 'goldstandard'
+    else:
+        recall_delta = delta(focused.recall, bfs.recall)
+        f1_delta = delta(focused.f1_score, bfs.f1_score)
+        recall_source = 'reference_corpus_size_approx'
+
     return {
         'harvest_rate_delta':            delta(focused.harvest_rate, bfs.harvest_rate),
         'harvest_rate_improvement_pct':  improvement_pct,
-        'recall_delta':                  delta(focused.recall, bfs.recall),
-        'f1_delta':                      delta(focused.f1_score, bfs.f1_score),
+        'recall_delta':                  recall_delta,
+        'f1_delta':                      f1_delta,
+        'recall_delta_source':           recall_source,
         'avg_relevance_score_delta':     delta(focused.avg_relevance_score, bfs.avg_relevance_score),
         'focused_wins':                  focused.harvest_rate > bfs.harvest_rate,
     }
@@ -338,6 +394,9 @@ def _print_table(results: List[Dict[str, Any]]) -> None:
             f"{'  -> Verbesserung HR':<35} "
             f"{sign}{cmp['harvest_rate_improvement_pct']:.1f}%{gs_note}"
         )
+        print(
+            f"{'  -> Recall-Delta-Quelle':<35} {cmp.get('recall_delta_source', '?')}"
+        )
         print(sep)
 
     print()
@@ -375,6 +434,20 @@ def run_baseline(
         # Goldstandard laden (optional)
         corpus = _load_corpus(gs_path)
 
+        # Plausibilitaetscheck: Domain im Goldstandard vs. Seed-URL.
+        # Faengt Faelle wie "gemeindesinn.de" (Seed) vs. "gemeinde-sinn.de"
+        # (Goldstandard-Domain) ab, bevor stillschweigend Recall=0.0 entsteht.
+        if corpus is not None and corpus.domain:
+            from urllib.parse import urlparse as _urlparse
+            seed_netloc = _urlparse(seed).netloc.lower().replace('www.', '')
+            gs_domain = corpus.domain.lower().replace('www.', '')
+            if gs_domain not in seed_netloc and seed_netloc not in gs_domain:
+                print(
+                    f'  [WARNUNG] Goldstandard-Domain "{gs_domain}" passt nicht offensichtlich '
+                    f'zur Seed-URL-Domain "{seed_netloc}". Bitte Szenario/Goldstandard-Zuordnung '
+                    f'pruefen, sonst ist der Recall fuer dieses Szenario nicht aussagekraeftig.'
+                )
+
         print('  Modus BFS  ... ', end='', flush=True)
         bfs_report, bfs_time, bfs_urls = _run_mode(
             seed_url=seed,
@@ -405,7 +478,7 @@ def run_baseline(
             print(f'  Recall Focused:      {focused_gs["recall_vs_goldstandard"]:.4f}  '
                   f'F1: {focused_gs["f1_vs_goldstandard"]:.4f}')
 
-        comparison = _compare(focused_report, bfs_report)
+        comparison = _compare(focused_report, bfs_report, focused_gs, bfs_gs)
 
         scenario_result = {
             'scenario_label':        label,

@@ -19,8 +19,48 @@
       "name": "Saarlouis",
       "url": "https://www.saarlouis.de/",
       "ags": "10044115",
-      "bundesland": "Saarlouis",
+      "bundesland": "Saarland",
       "einwohner": 37000,
+      "max_pages": 60
+    },
+    {
+      "name": "Augsburg",
+      "url": "https://www.augsburg.de/",
+      "ags": "00009772",
+      "bundesland": "Bayern",
+      "einwohner": 301000,
+      "max_pages": 60
+    },
+    {
+      "name": "Bremerhaven",
+      "url": "https://www.bremerhaven.de/",
+      "ags": "04012000",
+      "bundesland": "Bremen",
+      "einwohner": 118000,
+      "max_pages": 60
+    },
+    {
+      "name": "Großbreitenbach",
+      "url": "https://www.lg-grossbreitenbach.de/",
+      "ags": "16070058",
+      "bundesland": "Thüringen",
+      "einwohner": 5884,
+      "max_pages": 60
+    },
+     {
+      "name": "Potsdam",
+      "url": "https://www.potsdam.de/",
+      "ags": "00012054",
+      "bundesland": "Brandenburg",
+      "einwohner": 185000,
+      "max_pages": 60
+    },
+     {
+      "name": "Uckermark",
+      "url": "https://www.uckermark.de",
+      "ags": "00012073",
+      "bundesland": "Brandenburg",
+      "einwohner": 116000,
       "max_pages": 60
     },
     {

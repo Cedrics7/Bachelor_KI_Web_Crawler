@@ -1,26 +1,45 @@
 [
   {
-    "label": "Leer",
-    "seed_url": "https://www.leer.de",
-    "max_pages": 60,
-    "reference_corpus_size": 10,
-    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/leer.json",
-    "notes": "Mittelgrosse Niedersachsen-Stadt (Ostfriesland); keine restriktive robots.txt, gute Linkdichte"
+    "label": "Flensburg",
+    "seed_url": "https://www.flensburg.de/",
+    "max_pages": 100,
+    "reference_corpus_size": 4,
+    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/Flensburg.json",
+    "notes": ""
   },
   {
-    "label": "Saarlouis",
-    "seed_url": "https://www.saarlouis.de/",
-    "max_pages": 60,
-    "reference_corpus_size": 8,
-    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/saarlouis.json",
-    "notes": "Saarlouis"
+    "label": "Neubrandenburg",
+    "seed_url": "https://www.neubrandenburg.de/",
+    "max_pages": 100,
+    "reference_corpus_size": 4,
+    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/Neubrandenburg.json",
+    "notes": ""
   },
   {
-    "label": "Barssel",
-    "seed_url": "https://www.barssel.de",
-    "max_pages": 50,
-    "reference_corpus_size": 6,
-    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/barssel.json",
-    "notes": "Kleinstadt Niedersachsen"
+    "label": "Perl",
+    "seed_url": "https://perl.saarland/",
+    "max_pages": 100,
+    "reference_corpus_size": 4,
+    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/Perl.json",
+    "notes": ""
+  },
+  {
+    "label": "Quedlinburg",
+    "seed_url": "https://www.quedlinburg.de/",
+    "max_pages": 100,
+    "reference_corpus_size": 4,
+    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/Quedlinburg.json",
+    "notes": ""
+  },
+  {
+    "label": "Wolfenbuettel",
+    "seed_url": "https://www.wolfenbuettel.de/",
+    "max_pages": 100,
+    "reference_corpus_size": 4,
+    "goldstandard_path": "Bachelor_Crawler_erweitert/goldstandard/Wolfenbuettel.json",
+    "notes": ""
   }
 ]
+
+
+

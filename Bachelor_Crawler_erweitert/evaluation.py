@@ -11,11 +11,27 @@ Berechnet die Standardmetriken aus der Focused-Crawler-Literatur:
 
     Precision:             HR = Harvest Rate (bei Focused Crawling identisch)
 
-    Recall:                Anteil relevanter Seiten der Zieldomaene, die gefunden wurden
-                           Recall = |relevant_gefunden| / |relevant_gesamt|
-                           (Setzt einen bekannten Referenzkorpus voraus)
+    Recall (Naeherung):    ACHTUNG - dies ist KEIN echter Recall gegen einen
+                           annotierten Goldstandard, sondern eine grobe
+                           Approximation:
+                               recall_approx = min(1.0, n_relevant_gefunden / reference_corpus_size)
+                           Sie setzt lediglich voraus, dass die GESAMTGROESSE
+                           des relevanten Korpus bekannt ist (reference_corpus_size),
+                           nicht aber WELCHE Seiten konkret relevant sind.
+                           Da der eigene Klassifikator haeufig mehr Seiten als
+                           relevant einstuft als reference_corpus_size vorgibt,
+                           saettigt dieser Wert sehr schnell bei 1.0 und hat dann
+                           keine Trennschaerfe mehr.
+                           -> Fuer belastbare Aussagen (z.B. Kap. 6.1 der Thesis)
+                              IMMER den echten goldstandard-basierten Recall aus
+                              reference_corpus.ReferenceCorpus.compute_recall()
+                              verwenden, wenn eine goldstandard_path im Szenario
+                              gesetzt ist. Dieses Feld hier ist nur ein Fallback,
+                              wenn kein Goldstandard vorhanden ist.
 
-    F1-Score:              Harmonisches Mittel aus Precision und Recall
+    F1-Score:              Harmonisches Mittel aus Precision und der obigen
+                           Recall-Naeherung (bzw. bei vorhandenem Goldstandard:
+                           aus reference_corpus.compute_f1()).
 
     Irrelevance Ratio:     Anteil irrelevanter Seiten
                            IR = 1 - HR
@@ -43,6 +59,12 @@ class EvaluationReport:
     Vollstaendiger Evaluationsbericht eines Crawl-Laufs.
 
     Alle Metriken sind ∈ [0.0, 1.0], ausser total_crawled und total_relevant.
+
+    Hinweis zu 'recall'/'f1_score': Diese Felder basieren auf der groben
+    reference_corpus_size-Naeherung (siehe Moduldocstring) und NICHT auf
+    einem echten annotierten Goldstandard. Sind sie fuer eine belastbare
+    Aussage entscheidend, immer 'recall_vs_goldstandard'/'f1_vs_goldstandard'
+    aus baseline_runner._apply_goldstandard() bevorzugen.
     """
     total_crawled:         int = 0
     total_relevant:        int = 0
@@ -88,8 +110,8 @@ class EvaluationReport:
         print(f"  Harvest Rate:        {self.harvest_rate:.4f}  ({self.harvest_rate*100:.1f}%)")
         print(f"  Irrelevance Ratio:   {self.irrelevance_ratio:.4f}  ({self.irrelevance_ratio*100:.1f}%)")
         if self.recall > 0:
-            print(f"  Recall:              {self.recall:.4f}  ({self.recall*100:.1f}%)")
-            print(f"  F1-Score:            {self.f1_score:.4f}")
+            print(f"  Recall (Naeherung):  {self.recall:.4f}  ({self.recall*100:.1f}%)  [reference_corpus_size-basiert, kein Goldstandard]")
+            print(f"  F1-Score (Naeherung):{self.f1_score:.4f}")
         print(f"  Ø Relevanz-Score:    {self.avg_relevance_score:.4f}")
         if self.baseline_harvest_rate > 0:
             print("-" * 60)
@@ -124,6 +146,9 @@ class CrawlEvaluator:
         Args:
             start_url:              Einstiegs-URL des Crawls
             reference_corpus_size:  Bekannte Gesamtgroesse des relevanten Korpus
+                                     (nur fuer die grobe Recall-Naeherung, siehe
+                                     Moduldocstring - kein Ersatz fuer einen
+                                     echten Goldstandard)
         """
         self._results: List[RelevanceResult] = []
         self._baseline_results: List[RelevanceResult] = []
@@ -186,6 +211,9 @@ class CrawlEvaluator:
         irrelevance_ratio = n_irrelevant / total
         avg_score = sum(r.score for r in self._results) / total
 
+        # ACHTUNG: grobe Naeherung, kein echter Goldstandard-Recall.
+        # Saettigt bei 1.0, sobald n_relevant >= reference_corpus_size.
+        # Fuer belastbare Auswertungen goldstandard-basierten Recall verwenden.
         recall = 0.0
         f1 = 0.0
         if self._reference_size and self._reference_size > 0:

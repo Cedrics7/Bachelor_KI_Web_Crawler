@@ -10,7 +10,7 @@ Prueft, dass alle Kernkomponenten zusammenarbeiten:
   - EvaluationReport enthaelt sinnvolle Kennzahlen
 
 Die Tests sind offline-faehig (kein Netz, kein LLM, keine DB noetig).
-Aufruf:  pytest Bachelor_Crawler_erweitert/test_smoke.py -v
+Aufruf:  
 """
 from __future__ import annotations
 import unittest.mock as mock

@@ -14,18 +14,32 @@ berechen zu koennen:
 Ohne Referenzkorpus ist nur die Harvest Rate (Precision) messbar.
 
 Verwendung:
-    corpus = ReferenceCorpus.from_json("goldstandard/leer.json")
+    corpus = ReferenceCorpus.from_json("goldstandard/leer_alt.json")
     recall = corpus.compute_recall(crawled_urls=["https://leer.de/wirtschaft", ...])
     print(f"Recall: {recall:.4f}")
 
 Kategorien (aus domain_model.py):
     bauen, umwelt, wirtschaft, infrastruktur, verwaltung
+
+FIX (2026-08-13):
+    _normalize_for_compare() entfernte bisher nur das 'www.'-Praefix, nicht
+    aber das Schema (http:// vs https://). Da viele Kommunen-Webseiten
+    inzwischen zwingend auf https redirecten, annotierte Goldstandard-URLs
+    aber teils noch mit http:// angelegt wurden, matchten viele tatsaechlich
+    korrekte Treffer NICHT -> Recall wurde faelschlich 0.0 (z.B. Potsdam,
+    Hagen). Das Schema wird jetzt vollstaendig entfernt und zusaetzlich
+    ein optionaler 'index.html'/'index.php'-Suffix normalisiert.
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
+
+
+_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
+_INDEX_SUFFIX_RE = re.compile(r"/(index\.(html?|php))$", re.IGNORECASE)
 
 
 def _normalize_for_compare(url: str) -> str:
@@ -33,15 +47,36 @@ def _normalize_for_compare(url: str) -> str:
     Zentrale Normalisierungsfunktion fuer URL-Vergleiche zwischen
     Crawler-Ergebnissen und Goldstandard-Eintraegen.
 
-    Entfernt: Trailing Slash, Query-Parameter, 'www.'-Praefix,
-    und vereinheitlicht Gross-/Kleinschreibung.
+    Entfernt: Schema (http/https), Trailing Slash, Query-Parameter,
+    'www.'-Praefix, optionale index.html/index.php-Suffixe, und
+    vereinheitlicht Gross-/Kleinschreibung.
+
+    Wichtig: Das Schema wird komplett entfernt, NICHT nur 'www.', da sonst
+    http- und https-Varianten derselben Seite als unterschiedlich gelten
+    und Recall-Berechnungen faelschlich 0.0 liefern.
     """
-    u = url.strip().rstrip("/")
+    u = url.strip()
+
+    # Query-Parameter und Fragment entfernen, bevor irgendetwas anderes passiert
     if "?" in u:
         u = u.split("?")[0]
+    if "#" in u:
+        u = u.split("#")[0]
+
     u = u.lower()
-    # www.-Praefix entfernen (nach dem Schema, z. B. https://www.leer.de -> https://leer.de)
-    u = u.replace("://www.", "://")
+
+    # Schema vollstaendig entfernen (http:// und https:// gleichbehandeln)
+    u = _SCHEME_RE.sub("", u)
+
+    # 'www.'-Praefix entfernen (nach Schema-Entfernung steht es jetzt am Anfang)
+    if u.startswith("www."):
+        u = u[len("www."):]
+
+    u = u.rstrip("/")
+
+    # index.html / index.php am Pfadende ist aequivalent zum Verzeichnis selbst
+    u = _INDEX_SUFFIX_RE.sub("", u)
+
     return u
 
 
@@ -74,7 +109,7 @@ class ReferenceCorpus:
     Beispiel:
         corpus = ReferenceCorpus(domain="leer.de")
         corpus.add(CorpusEntry(url="https://leer.de/wirtschaft", relevant=True, kategorie="wirtschaft"))
-        corpus.save_json("goldstandard/leer.json")
+        corpus.save_json("goldstandard/leer_alt.json")
     """
 
     VALID_CATEGORIES = {"bauen", "umwelt", "wirtschaft", "infrastruktur", "verwaltung", ""}
@@ -112,6 +147,22 @@ class ReferenceCorpus:
         """Gesamtanzahl annotierter Seiten."""
         return len(self._entries)
 
+    def _domain_matches(self, crawled_urls: List[str]) -> bool:
+        """
+        Grobe Plausibilitaetspruefung: pruefit ob wenigstens eine gecrawlte
+        URL zur annotierten Domain passt. Hilft, Domain-Mismatches
+        (z.B. 'gemeindesinn.de' vs. annotiert 'gemeinde-sinn.de')
+        fruehzeitig sichtbar zu machen statt sie in Recall=0.0 zu verstecken.
+        """
+        if not self.domain:
+            return True
+        target = self.domain.lower().replace("www.", "")
+        for u in crawled_urls:
+            netloc = _normalize_for_compare(u).split("/")[0]
+            if target in netloc or netloc in target:
+                return True
+        return False
+
     def compute_recall(self, crawled_urls: List[str]) -> float:
         """
         Berechnet Recall des Crawlers gegen diesen Goldstandard.
@@ -142,7 +193,19 @@ class ReferenceCorpus:
             print(f"    Goldstandard-Domain:   {self.domain}")
             print(f"    Goldstandard-Beispiele: {gs_sample}")
             print(f"    Gecrawlte Beispiele:    {crawled_sample}")
-            print("    -> Pruefe ob beide Domains identisch sind (z.B. Stadt vs. Landkreis)")
+            if not self._domain_matches(crawled_urls):
+                print(
+                    "    -> WARNUNG: Keine der gecrawlten URLs enthaelt die "
+                    f"Goldstandard-Domain '{self.domain}'. Vermutlich Domain-Mismatch "
+                    "(z.B. Bindestrich-Schreibweise oder falsche Szenario-Zuordnung) "
+                    "-- Recall ist in diesem Fall nicht aussagekraeftig."
+                )
+            else:
+                print(
+                    "    -> Domain stimmt grundsaetzlich ueberein. Pruefe Pfad-Tiefe "
+                    "(_MAX_PATH_DEPTH), max_pages-Budget oder ob die Zielseiten "
+                    "ueberhaupt innerhalb des Crawl-Radius liegen."
+                )
 
         return recall
 

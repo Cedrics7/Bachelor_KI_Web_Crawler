@@ -1,6 +1,16 @@
 """
 Vollständig kombinierter Crawler: Focused + DSGVO + robots + JS/VG-Fallback.
 Konfiguration via config.py / .env (python-dotenv).
+
+FIX (2026-08-13):
+    Die Link-Enqueue-Logik (Priorisierung/FIFO-Einordnung neuer Links in die
+    Queue) lag bisher inline im crawl()-Loop. baseline_runner.py definierte
+    einen _BFSCrawler mit einer ueberschriebenen Methode _enqueue_scored_links(),
+    die es in dieser Klasse aber gar nicht gab -> der Override war toter Code
+    und wurde nie aufgerufen. Die Logik ist jetzt in die Methode
+    _enqueue_scored_links() ausgelagert und wird aus crawl() heraus
+    aufgerufen, damit Subklassen (z.B. die BFS-Baseline) sie tatsaechlich
+    ueberschreiben koennen.
 """
 from __future__ import annotations
 import hashlib
@@ -127,6 +137,51 @@ class FocusedCrawler:
             )
 
     # ------------------------------------------------------------------ crawl
+
+    def _enqueue_scored_links(
+        self,
+        queue: List[Tuple[str, str, str]],
+        scored_links: list,
+        visited_urls: set,
+    ) -> int:
+        """
+        Ordnet neu gefundene, bewertete Links in die Crawl-Queue ein.
+
+        Standardverhalten (Focused Crawling): priorisierte Links (sl.is_priority)
+        werden vorn in die Queue eingefuegt (LIFO-artiger Vorrang), alle
+        anderen Links (inkl. PDFs) hinten angehaengt (FIFO).
+
+        Subklassen (z.B. eine BFS-Baseline) koennen diese Methode
+        ueberschreiben, um z.B. ausschliesslich FIFO-Verhalten zu erzwingen,
+        unabhaengig von der Link-Priorisierung.
+
+        Returns:
+            Anzahl der als priorisiert eingefuegten Links.
+        """
+        n_prio = 0
+        for sl in scored_links:
+            if len(queue) >= self._config['max_queue']:
+                break
+            target_base = self._get_url_base(sl.url)
+            if target_base in visited_urls or _is_skip_url(sl.url):
+                continue
+            entry = (sl.url, sl.anchor_text, '')
+            # PDF-Links kommen ans Ende der Queue (kein Budget-Vorrang)
+            if sl.is_priority and not sl.is_pdf:
+                queue.insert(0, entry)
+                n_prio += 1
+            else:
+                queue.append(entry)
+            self._logger.cpe_score(
+                url=sl.url,
+                cpe_score=sl.cpe_score,
+                anchor_score=sl.anchor_score,
+                context_score=sl.context_score,
+                url_score=sl.url_score,
+                page_score=sl.page_score,
+                is_priority=sl.is_priority,
+            )
+        return n_prio
 
     def crawl(
         self,
@@ -261,29 +316,7 @@ class FocusedCrawler:
                     scored_links = self._prioritizer.score_links(
                         new_links, page_text=text
                     )
-                    n_prio = 0
-                    for sl in scored_links:
-                        if len(queue) >= self._config['max_queue']:
-                            break
-                        target_base = self._get_url_base(sl.url)
-                        if target_base in visited_urls or _is_skip_url(sl.url):
-                            continue
-                        entry = (sl.url, sl.anchor_text, '')
-                        # PDF-Links kommen ans Ende der Queue (kein Budget-Vorrang)
-                        if sl.is_priority and not sl.is_pdf:
-                            queue.insert(0, entry)
-                            n_prio += 1
-                        else:
-                            queue.append(entry)
-                        self._logger.cpe_score(
-                            url=sl.url,
-                            cpe_score=sl.cpe_score,
-                            anchor_score=sl.anchor_score,
-                            context_score=sl.context_score,
-                            url_score=sl.url_score,
-                            page_score=sl.page_score,
-                            is_priority=sl.is_priority,
-                        )
+                    n_prio = self._enqueue_scored_links(queue, scored_links, visited_urls)
 
                     self._logger.crawl_step(
                         curr_url, 'DONE',

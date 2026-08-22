@@ -33,31 +33,32 @@ class DomainModel:
         - Verwaltung (Satzung, Verordnung, etc.)
     """
 
-    DEFAULT_KEYWORDS: Dict[str, List[str]] = {
+    DEFAULT_KEYWORDS = {
         "bauen": [
-            "bebauungsplan", "bebauungsplaene", "bauvorhaben", "bauantrag", "baugenehmigung",
-            "bauleitplanung", "stadtplanung", "flaechennutzungsplan", "flaechennutzungsplaene",
-            "baumassnahme", "bauprojekt", "neubau", "sanierung",
-            "stadtumbaugebiet", "planungsbeteiligung",
-        ],
-        "umwelt": [
-            "klimaschutz", "energie", "umwelt", "nachhaltigkeit",
-            "emission", "co2", "erneuerbar", "photovoltaik",
-            "windkraft", "biomasse", "wasserschutz", "naturschutz",
-        ],
-        "wirtschaft": [
-            "gewerbe", "ansiedlung", "wirtschaft", "standort",
-            "foerderung", "investition", "arbeitsplatz", "unternehmen",
-        ],
-        "infrastruktur": [
-            "strasse", "verkehr", "radweg", "fussgaenger",
-            "oeffentlich", "nahverkehr", "parkplatz", "ampel",
+            "bebauungsplan", "bebauungsplaene", "flaechennutzungsplan", "flaechennutzungsplaene",
+            "bauleitplanung", "baugenehmigung", "bauvorhaben", "neubau", "sanierung",
+            "sanierungsgebiet", "stadtumbaugebiet", "stadtentwicklung", "dorfentwicklung", "entwicklung",
+            "planungsbeteiligung", "buergerbeteiligung", "oeffentlichkeitsbeteiligung", "oeffentliche-auslegung",
+            "planfeststellung", "satzungsbeschluss",
         ],
         "verwaltung": [
-            "satzung", "verordnung", "beschluss", "gemeinderat",
-            "sitzung", "protokoll", "ausschuss", "wahl",
-            "amtsblatt", "bekanntmachung", "bekanntmachungen",
-            "ausschreibung", "ausschreibungen",
+            "amtliche-bekanntmachung", "oeffentliche-bekanntmachung",
+            "ausschreibung", "vergabe", "vergabeverfahren",
+            "gemeinderatsbeschluss", "satzung", "verordnung",
+            "amtsblatt", "bekanntmachungsblatt",
+        ],
+        "wirtschaft": [
+            "gewerbegebiet", "gewerbeflaeche", "wirtschaftsfoerderung",
+            "foerderprogramm", "foerderbescheid", "investitionsprogramm",
+            "breitbandausbau", "glasfaserausbau",
+        ],
+        "infrastruktur": [
+            "radverkehrskonzept", "verkehrskonzept", "mobilitaetskonzept",
+            "nahverkehrsplan", "strassenausbau", "radwegebau", "radweg",
+        ],
+        "aktuelles": [
+            "pressemitteilung", "bekanntmachung", "mitteilung",
+            "neuigkeit", "meldung", "ankuendigung", "allgemein"
         ],
     }
 
