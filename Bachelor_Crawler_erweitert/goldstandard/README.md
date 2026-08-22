@@ -37,7 +37,7 @@ Nach vollstaendiger Annotation die Dateien in `leer.json`, `saarlouis.json`, `ba
 ```python
 from Bachelor_Crawler_erweitert.reference_corpus import ReferenceCorpus
 
-corpus = ReferenceCorpus.from_json("goldstandard/leer.json")
+corpus = ReferenceCorpus.from_json("goldstandard/leer_alt.json")
 recall = corpus.compute_recall(crawled_urls=["https://leer.de/wirtschaft", ...])
 f1 = corpus.compute_f1(precision=0.783, crawled_urls=[...])
 print(f"Recall: {recall:.4f}, F1: {f1:.4f}")

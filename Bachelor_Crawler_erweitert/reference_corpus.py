@@ -14,7 +14,7 @@ berechen zu koennen:
 Ohne Referenzkorpus ist nur die Harvest Rate (Precision) messbar.
 
 Verwendung:
-    corpus = ReferenceCorpus.from_json("goldstandard/leer.json")
+    corpus = ReferenceCorpus.from_json("goldstandard/leer_alt.json")
     recall = corpus.compute_recall(crawled_urls=["https://leer.de/wirtschaft", ...])
     print(f"Recall: {recall:.4f}")
 
@@ -74,7 +74,7 @@ class ReferenceCorpus:
     Beispiel:
         corpus = ReferenceCorpus(domain="leer.de")
         corpus.add(CorpusEntry(url="https://leer.de/wirtschaft", relevant=True, kategorie="wirtschaft"))
-        corpus.save_json("goldstandard/leer.json")
+        corpus.save_json("goldstandard/leer_alt.json")
     """
 
     VALID_CATEGORIES = {"bauen", "umwelt", "wirtschaft", "infrastruktur", "verwaltung", ""}
