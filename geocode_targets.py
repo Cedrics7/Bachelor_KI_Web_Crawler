@@ -23,7 +23,7 @@ def get_db_connection():
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "127.0.0.1"),
         port=os.getenv("DB_PORT", "5432"),
-        database=os.getenv("DB_NAME", "Alt/Bachelor_KI_Web_Crawler/Bachelor_Crawler"),
+        database=os.getenv("DB_NAME", "bachelor_crawler"),
         user=os.getenv("DB_USER", "postgres"),
         password=os.getenv("DB_PASS", ""),
     )
