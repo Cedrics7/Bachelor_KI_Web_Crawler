@@ -6,9 +6,25 @@
     <title>Crawler Dashboard | Telekom</title>
     <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/d/dd/Deutsche_Telekom_2022.svg">
 
-    <!-- Scale Design System -->
-    <link rel="stylesheet" href="node_modules/@telekom/scale-components/dist/scale-components/scale-components.css" />
-    <script type="module" src="node_modules/@telekom/scale-components/dist/scale-components/scale-components.esm.js"></script>
+    <!-- Betriebsmodus (Demo oder Live) -->
+    <script src="js/config.js"></script>
+
+    <!-- Scale Design System: Demo per CDN, Live lokal aus node_modules -->
+    <script>
+        (function () {
+            var base = window.DEMO_MODE
+                ? 'https://cdn.jsdelivr.net/npm/@telekom/scale-components@3.0.0-beta.156'
+                : 'node_modules/@telekom/scale-components';
+            var css = document.createElement('link');
+            css.rel = 'stylesheet';
+            css.href = base + '/dist/scale-components/scale-components.css';
+            document.head.appendChild(css);
+            var js = document.createElement('script');
+            js.type = 'module';
+            js.src = base + '/dist/scale-components/scale-components.esm.js';
+            document.head.appendChild(js);
+        }());
+    </script>
 
     <!-- Leaflet (kein integrity-Attribut, um SRI-Blockierung zu vermeiden) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -223,6 +239,7 @@
 
     <script>function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }</script>
     <script src="js/theme.js"></script>
+    <script src="js/demo-data.js"></script>
     <script src="js/api.js"></script>
     <script src="js/render.js"></script>
     <script src="js/map.js"></script>
