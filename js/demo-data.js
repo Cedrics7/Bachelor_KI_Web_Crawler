@@ -9,6 +9,18 @@
 (function () {
     'use strict';
 
+    /* OSM-Kacheln (Tile Usage Policy): Der Browser muss einen gueltigen
+       Referer senden. Gilt im Demo- und im Live-Modus. */
+    (function () {
+        var meta = document.createElement('meta');
+        meta.name = 'referrer';
+        meta.content = 'strict-origin-when-cross-origin';
+        document.head.appendChild(meta);
+        if (window.L && window.L.TileLayer) {
+            window.L.TileLayer.prototype.options.referrerPolicy = 'strict-origin-when-cross-origin';
+        }
+    }());
+
     if (!window.DEMO_MODE) return;
 
     /* ---------- Zufall (deterministisch) ---------- */
@@ -334,7 +346,13 @@
         window.renderApiStatus = function () {
             var dot   = document.getElementById('api-status-dot');
             var label = document.getElementById('api-status-label');
-            if (dot)   dot.className = 'status-dot dot-online';
+            if (dot) {
+                dot.className = 'status-dot dot-demo';
+                dot.style.background = '#f59e0b';
+                dot.style.backgroundColor = '#f59e0b';
+                dot.style.boxShadow = '0 0 6px rgba(245, 158, 11, 0.6)';
+                dot.style.animation = 'none';
+            }
             if (label) label.textContent = 'DEMO-MODUS';
         };
 
