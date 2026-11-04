@@ -56,6 +56,7 @@
             </div>
         </div>
         <div class="nav-right">
+            <a href="/#projekte" id="back-to-site" class="nav-link" style="text-decoration:none;white-space:nowrap;">&larr; Zurück zur Website</a>
             <scale-button id="theme-toggle-btn" variant="ghost" icon-only
                 aria-label="Design umschalten" onclick="toggleTheme()" mode="light">
                 <scale-icon-action-light-dark-mode id="theme-icon" decorative mode="light">
@@ -240,6 +241,7 @@
     </footer>
 
     <script>function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }</script>
+    <script>if (!window.DEMO_MODE) { var backLink = document.getElementById('back-to-site'); if (backLink) { backLink.style.display = 'none'; } }</script>
     <script src="js/crawler/theme.js"></script>
     <script src="js/crawler/demo-data.js"></script>
     <script src="js/crawler/api.js"></script>
