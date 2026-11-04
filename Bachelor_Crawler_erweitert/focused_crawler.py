@@ -402,6 +402,14 @@ class FocusedCrawler:
             self._logger.close()
         if self._db:
             self._db.close()
+        export_path = self._config.get('llm_json_export')
+        if export_path:
+            from .output_schema import ProjectDataExport
+            export = ProjectDataExport(domain=start_url)
+            for r in results:
+                if r.llm_result:
+                    export.add_from_llm_result(r.llm_result, r.url)
+            export.save_json(export_path)
         return results, report
 
     # ---------------------------------------------------------------- helpers

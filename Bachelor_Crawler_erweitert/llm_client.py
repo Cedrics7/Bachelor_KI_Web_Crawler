@@ -14,7 +14,7 @@ import re
 from datetime import date
 from typing import Optional
 from urllib.parse import urlparse
-from config import ZIEL_KATEGORIEN as _CONFIG_ZIEL_KATEGORIEN
+from .config import ZIEL_KATEGORIEN as _CONFIG_ZIEL_KATEGORIEN
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +164,7 @@ class LLMClient:
         kategorien: Optional[dict] = None,
     ) -> None:
         self._model = model
-        self._max_tokens = max(1, min(int(max_tokens), 128_000))
+        self._max_tokens = max(1, min(int(max_tokens), 64_000))
         self._temperature = temperature
         self._kategorien = kategorien if kategorien is not None else _CONFIG_ZIEL_KATEGORIEN
         self._client = None

@@ -359,7 +359,7 @@
         var bar = document.createElement('div');
         bar.setAttribute('role', 'note');
         bar.style.cssText = 'background:#fff8e1;color:#5d4037;border-bottom:1px solid #ffe0b2;padding:6px 16px;font-size:12px;text-align:center;';
-        bar.textContent = 'Demo-Modus: Alle Daten sind frei erfundene Beispieldaten. Es werden keine API und keine Datenbank benötigt.';
+        bar.textContent = 'Demo-Modus: Alle Daten sind frei erfundene Beispieldaten. Es werden keine API und keine Datenbank benötigt. Alle Telekom-Scale Elemente sind öffentlich zugänglich!';
         var accent = document.querySelector('.telekom-accent-bar');
         if (accent && accent.parentNode) accent.parentNode.insertBefore(bar, accent.nextSibling);
         else document.body.insertBefore(bar, document.body.firstChild);

@@ -90,7 +90,7 @@ DATABASE_URL: str = _build_database_url()
 # ---------------------------------------------------------------
 OPENAI_API_KEY: str        = os.getenv('OPENAI_API_KEY')
 OPENAI_BASE_URL: str       = os.getenv('OPENAI_BASE_URL', 'https://llmapi.telekom.de/v1')
-LLM_MODEL: str             = os.getenv('LLM_MODEL', 'gpt-5.1')
+LLM_MODEL: str             = os.getenv('LLM_MODEL', 'gemini-3.7-flash')
 
 # ---------------------------------------------------------------
 # LLM-Kategorien (Ziel-Kategorien für Massnahmen-Klassifikation)
@@ -164,10 +164,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'max_pages':                _int(os.getenv('CRAWLER_MAX_PAGES'), 50),
     'max_queue':                _int(os.getenv('CRAWLER_MAX_QUEUE'), 300),
     'vg_max_queue':             _int(os.getenv('CRAWLER_VG_MAX_QUEUE'), 80),
-    'ram_warn_mb':              _int(os.getenv('CRAWLER_RAM_WARN_MB'), 1500),
+    'ram_warn_mb':              _int(os.getenv('CRAWLER_RAM_WARN_MB'), 16000),
 
     # Multi-Target-Lauf (run_crawler.py)
-    'max_targets':              _int(os.getenv('CRAWLER_MAX_TARGETS'), 1),     # 0 = alle
+    'max_targets':              _int(os.getenv('CRAWLER_MAX_TARGETS'), 100),     # 0 = alle
     'prio_region':              os.getenv('CRAWLER_PRIO_REGION', ''),          # z.B. 'Bayern'
     'sleep_between_targets':    _float(os.getenv('CRAWLER_SLEEP_BETWEEN_TARGETS'), 1.0),
 

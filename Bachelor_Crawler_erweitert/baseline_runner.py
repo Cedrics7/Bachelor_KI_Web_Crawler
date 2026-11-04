@@ -225,6 +225,7 @@ def _run_mode(
     reference_corpus_size: Optional[int],
     mode: str,
     run_id: str,
+    llm_results_dir = Path(__file__).resolve().parent.parent / 'llm_results'
 ) -> Tuple[EvaluationReport, float, List[str]]:
     """
     Fuehrt einen Crawl-Lauf (BFS oder Focused) durch.
@@ -236,9 +237,10 @@ def _run_mode(
         **DEFAULT_CONFIG,
         'max_pages': max_pages,
         'db_enabled': False,
-        'llm_enabled': False,
-        'js_rendering': False,
+        'llm_enabled': True,
+        'js_rendering': True,
         'robots_respect': True,
+        'llm_json_export': str(llm_results_dir / f'{run_id}_llm.json'),
     }
 
     if mode == 'bfs':
